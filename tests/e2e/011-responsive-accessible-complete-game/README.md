@@ -20,7 +20,7 @@ The complete market remains legible and operable by keyboard and touch at phone 
 
 **Verifications:**
 
-- [x] Market, private hand, public supplies, and hidden rival information remain labelled
+- [x] Market, private hand, concealed opponent hand, and public supplies remain labelled
 - [x] Connection state remains announced without an offline-mode control
 - [x] All remaining controls retain accessible names and touch-sized targets
 - [x] The complete table fits the viewport without document scrolling
