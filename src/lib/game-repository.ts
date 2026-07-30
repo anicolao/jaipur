@@ -40,28 +40,55 @@ export function createGameRepository(
 ): GameRepository {
   const stream = collection(db, 'games', gameId, 'events');
   const sequenceKey = `jaipur:${gameId}:${actorUid}:client-seq`;
+  let pending: GameEvent[] = [];
+  let remote: GameEvent[] = [];
+  let notify: ((events: GameEvent[]) => void) | undefined;
+
+  const ordered = () =>
+    [...remote, ...pending].sort(
+      (left, right) =>
+        left.createdAtMillis - right.createdAtMillis || left.id.localeCompare(right.id)
+    );
 
   return {
     async append(type, payload) {
       const clientSeq = Number(localStorage.getItem(sequenceKey) ?? '0') + 1;
       const eventId = `${actorUid}-${String(clientSeq).padStart(8, '0')}`;
-      await setDoc(doc(stream, eventId), {
+      localStorage.setItem(sequenceKey, String(clientSeq));
+      pending.push({
+        id: eventId,
         type,
         payload,
         actorUid,
         clientSeq,
-        createdAt: serverTimestamp(),
+        createdAtMillis: Date.now(),
         schemaVersion: SCHEMA_VERSION,
         reducerVersion: REDUCER_VERSION
       });
-      localStorage.setItem(sequenceKey, String(clientSeq));
+      notify?.(ordered());
+      try {
+        await setDoc(doc(stream, eventId), {
+          type,
+          payload,
+          actorUid,
+          clientSeq,
+          createdAt: serverTimestamp(),
+          schemaVersion: SCHEMA_VERSION,
+          reducerVersion: REDUCER_VERSION
+        });
+      } catch (error) {
+        pending = pending.filter(({ id }) => id !== eventId);
+        notify?.(ordered());
+        throw error;
+      }
     },
 
     subscribe(onEvents, onError) {
+      notify = onEvents;
       return onSnapshot(
         stream,
         (snapshot) => {
-          const events = snapshot.docs
+          remote = snapshot.docs
             .map((snapshotDocument): GameEvent => {
               const value = snapshotDocument.data() as StoredEvent;
               return {
@@ -74,12 +101,10 @@ export function createGameRepository(
                 schemaVersion: value.schemaVersion,
                 reducerVersion: value.reducerVersion
               };
-            })
-            .sort(
-              (left, right) =>
-                left.createdAtMillis - right.createdAtMillis || left.id.localeCompare(right.id)
-            );
-          onEvents(events);
+            });
+          const remoteIds = new Set(remote.map(({ id }) => id));
+          pending = pending.filter(({ id }) => !remoteIds.has(id));
+          onEvents(ordered());
         },
         (error) => onError(error)
       );
