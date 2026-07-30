@@ -50,7 +50,8 @@ export class TestStepHelper {
     });
 
     const index = String(this.count++).padStart(3, '0');
-    const filename = `${index}-${id}-${this.testInfo.project.name}.png`;
+    const platform = process.platform === 'linux' ? '-linux' : '';
+    const filename = `${index}-${id}-${this.testInfo.project.name}${platform}.png`;
     await expect(this.page).toHaveScreenshot(filename);
     this.steps.push({
       title: options.description,
