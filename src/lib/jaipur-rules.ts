@@ -59,6 +59,7 @@ export interface GameState extends LobbyState {
   rounds: RoundState[];
   seals: Record<string, number>;
   winnerUid: string | null;
+  epoch: number;
 }
 
 const CARD_COUNTS: Record<CardKind, number> = {
@@ -264,6 +265,7 @@ export function reduceGame(events: GameEvent[]): GameState {
   const rounds: RoundState[] = [];
   let round: RoundState | null = null;
   let winnerUid: string | null = null;
+  let epoch = 1;
 
   const finishAction = (actorUid: string) => {
     if (!round) return;
@@ -283,6 +285,19 @@ export function reduceGame(events: GameEvent[]): GameState {
   };
 
   for (const event of events) {
+    if (event.type === 'game/rematched') {
+      if (event.actorUid !== lobby.hostUid || !winnerUid) {
+        lobby.diagnostics.push(`${event.id}: invalid rematch`);
+        continue;
+      }
+      round = null;
+      rounds.length = 0;
+      for (const uid of playerUids) seals[uid] = 0;
+      winnerUid = null;
+      epoch += 1;
+      continue;
+    }
+
     if (event.type === 'round/started') {
       const seed = event.payload.seed;
       const starterUid = event.payload.starterUid;
@@ -401,7 +416,7 @@ export function reduceGame(events: GameEvent[]): GameState {
       finishAction(event.actorUid);
     }
   }
-  return { ...lobby, round, rounds, seals, winnerUid };
+  return { ...lobby, round, rounds, seals, winnerUid, epoch };
 }
 
 export function legalSingleGoods(round: RoundState, uid: string): Card[] {

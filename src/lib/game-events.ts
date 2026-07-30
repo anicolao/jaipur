@@ -9,7 +9,8 @@ export type GameEventType =
   | 'cards/taken-one'
   | 'cards/taken-camels'
   | 'cards/exchanged'
-  | 'cards/sold';
+  | 'cards/sold'
+  | 'game/rematched';
 
 export interface GameEvent {
   id: string;

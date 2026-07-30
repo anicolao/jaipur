@@ -131,6 +131,24 @@
     }
   }
 
+  async function startRematch() {
+    if (!repository || uid !== lobby.hostUid || !lobby.winnerUid) return;
+    busy = true;
+    try {
+      const fixedSeed = new URLSearchParams(location.search).get('seed');
+      await repository.append('game/rematched', { epoch: lobby.epoch + 1 });
+      await repository.append('round/started', {
+        seed: fixedSeed ? `${fixedSeed}:rematch:${lobby.epoch + 1}` : crypto.randomUUID(),
+        starterUid: lobby.players[0].uid,
+        roundNumber: 1
+      });
+    } catch (error) {
+      showError(error);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function takeOne(cardId: string) {
     if (!repository || lobby.round?.activeUid !== uid) return;
     busy = true;
@@ -342,16 +360,25 @@
       </section>
     {:else if lobby.round.status === 'complete'}
       <section class="score-review" aria-labelledby="round-result">
-        <p class="eyebrow">Round {lobby.round.number} complete</p>
-        <h2 id="round-result">
-          {lobby.players.find((player) => player.uid === lobby.round?.winnerUid)?.displayName}
-          earns a Seal of Excellence
-        </h2>
-        <p>
-          {lobby.round.endReason === 'three-empty-supplies'
-            ? 'Three goods supplies are empty.'
-            : 'The deck could not completely refill the market.'}
-        </p>
+        {#if lobby.winnerUid}
+          <p class="eyebrow">Match complete</p>
+          <h2 id="round-result" class="match-winner">
+            {lobby.players.find((player) => player.uid === lobby.winnerUid)?.displayName}
+            wins Jaipur
+          </h2>
+          <p>Two Seals of Excellence decide the match.</p>
+        {:else}
+          <p class="eyebrow">Round {lobby.round.number} complete</p>
+          <h2 id="round-result">
+            {lobby.players.find((player) => player.uid === lobby.round?.winnerUid)?.displayName}
+            earns a Seal of Excellence
+          </h2>
+          <p>
+            {lobby.round.endReason === 'three-empty-supplies'
+              ? 'Three goods supplies are empty.'
+              : 'The deck could not completely refill the market.'}
+          </p>
+        {/if}
         <div class="scorecards">
           {#each lobby.players as player}
             <article class:winner={player.uid === lobby.round.winnerUid}>
@@ -371,11 +398,34 @@
             </article>
           {/each}
         </div>
-        {#if !lobby.winnerUid && lobby.hostUid === uid}
+        {#if lobby.winnerUid}
+          <section class="match-history" aria-label="Round history">
+            <h3>Round history</h3>
+            {#each lobby.rounds as completedRound}
+              <p>
+                Round {completedRound.number}:
+                <strong>
+                  {lobby.players.find((player) => player.uid === completedRound.winnerUid)?.displayName}
+                </strong>
+                {lobby.players
+                  .map(
+                    (player) =>
+                      `${player.displayName} ${completedRound.scores?.[player.uid]?.total ?? 0}`
+                  )
+                  .join(' · ')}
+              </p>
+            {/each}
+          </section>
+          {#if lobby.hostUid === uid}
+            <button type="button" disabled={busy} onclick={startRematch}>Start rematch</button>
+          {:else}
+            <p>Waiting for the host to start a rematch…</p>
+          {/if}
+        {:else if lobby.hostUid === uid}
           <button type="button" disabled={busy} onclick={startRound}>
             Open round {lobby.round.number + 1}
           </button>
-        {:else if !lobby.winnerUid}
+        {:else}
           <p>Waiting for the host to open the next market…</p>
         {/if}
       </section>
@@ -388,6 +438,11 @@
           </div>
           <div><span>Deck</span><strong>{lobby.round.deck.length}</strong></div>
         </header>
+        <div class="seal-track" aria-label="Seal track">
+          {#each lobby.players as player}
+            <span>{player.displayName}: <strong>{lobby.seals[player.uid] ?? 0} / 2 seals</strong></span>
+          {/each}
+        </div>
         <h2>Market</h2>
         {#if lobby.round.activeUid === uid}
           <div class="turn-actions">
@@ -683,6 +738,14 @@
     border-bottom: 1px solid #b7aa8d;
   }
   .table header div { display: grid; }
+  .seal-track {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 0.65rem;
+    color: #5f6f69;
+    font-size: 0.875rem;
+  }
   .table h2 { margin: 1rem 0 0.5rem; font: 700 1.8rem 'Cormorant Garamond', serif; }
   .take-camels { margin: 0 0 0.65rem; }
   .turn-actions, .herd-returns {
@@ -758,6 +821,13 @@
   .scorecards dl { margin: 0; }
   .scorecards dl div { display: flex; justify-content: space-between; }
   .scorecards dd { margin: 0; font-weight: 700; }
+  .match-history {
+    margin: 0 0 1.25rem;
+    padding: 0.8rem;
+    border-radius: 0.8rem;
+    background: #e9dcc1;
+  }
+  .match-history h3, .match-history p { margin: 0.25rem; }
   @media (max-width: 480px) {
     main { padding: 1rem; }
     .hero { padding: 2rem 1.2rem; border-radius: 1.4rem; }

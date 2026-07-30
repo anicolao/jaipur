@@ -42,7 +42,7 @@ test('ready traders receive a deterministic private deal', async ({ browser, pag
         spec: 'The local hand is exact while the opponent is represented by a count',
         check: async () => {
           await expect(page.locator('.hand article')).toHaveCount(4);
-          await expect(page.getByText('Belen').locator('..')).toBeVisible();
+          await expect(page.locator('.opponent')).toContainText('Belen');
           await expect(page.getByText('Herd hidden')).toBeVisible();
         }
       },
