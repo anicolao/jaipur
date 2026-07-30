@@ -40,10 +40,26 @@ export class TestStepHelper {
     );
     await this.page.mouse.move(0, 0);
     await this.page.evaluate(() => {
+      const root = document.documentElement;
+      if (root.scrollWidth > window.innerWidth + 1 || root.scrollHeight > window.innerHeight + 1) {
+        throw new Error(
+          `page scrolls: ${root.scrollWidth}×${root.scrollHeight} inside ${window.innerWidth}×${window.innerHeight}`
+        );
+      }
+      if (window.scrollX !== 0 || window.scrollY !== 0) {
+        throw new Error(`page is scrolled to ${window.scrollX},${window.scrollY}`);
+      }
+
       for (const element of document.querySelectorAll<HTMLElement>('[data-e2e-layout] *')) {
+        if (!element.checkVisibility()) continue;
         const rect = element.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) continue;
-        if (rect.left < -1 || rect.right > window.innerWidth + 1) {
+        if (
+          rect.left < -1 ||
+          rect.right > window.innerWidth + 1 ||
+          rect.top < -1 ||
+          rect.bottom > window.innerHeight + 1
+        ) {
           throw new Error(`${element.tagName} is outside the viewport`);
         }
       }

@@ -132,10 +132,6 @@ test('the complete table is responsive and accessible by keyboard and touch', as
   await reconnect.focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-status]')).toHaveAttribute('data-status', 'synced');
-  await page.locator('.token-area').evaluate((element) =>
-    element.scrollIntoView({ block: 'center' })
-  );
-
   await steps.step('touch-ready-table', {
     description: 'The synchronized table exposes every state without relying on colour',
     verifications: [
@@ -149,6 +145,8 @@ test('the complete table is responsive and accessible by keyboard and touch', as
           await expect(page.locator('.opponent')).toContainText('values hidden');
           await expect(page.locator('.token.leather')).toContainText('Leather');
           await expect(page.locator('.token.leather')).toContainText('left');
+          await expect(page.locator('.market .piece-image')).toHaveCount(5);
+          await expect(page.locator('.token-area img')).toHaveCount(6);
         }
       },
       {
@@ -161,6 +159,30 @@ test('the complete table is responsive and accessible by keyboard and touch', as
       {
         spec: 'All remaining controls retain accessible names and touch-sized targets',
         check: () => expectAccessibleTouchControls(page)
+      },
+      {
+        spec: 'The complete table fits the viewport without document scrolling',
+        check: async () => {
+          await expect
+            .poll(() =>
+              page.evaluate(() => ({
+                height: document.documentElement.scrollHeight,
+                width: document.documentElement.scrollWidth,
+                viewportHeight: window.innerHeight,
+                viewportWidth: window.innerWidth,
+                x: window.scrollX,
+                y: window.scrollY
+              }))
+            )
+            .toEqual({
+              height: viewports[testInfo.project.name].height,
+              width: viewports[testInfo.project.name].width,
+              viewportHeight: viewports[testInfo.project.name].height,
+              viewportWidth: viewports[testInfo.project.name].width,
+              x: 0,
+              y: 0
+            });
+        }
       }
     ]
   });
