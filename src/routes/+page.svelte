@@ -37,6 +37,14 @@
   let activeExchangeTarget = $state<string | null>(null);
   let selectedHand = $state<string[]>([]);
   let draggedHandCardId = $state<string | null>(null);
+  let pointerHandDrag = $state<{
+    cardId: string;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    moved: boolean;
+  } | null>(null);
+  let suppressHandClickId = $state<string | null>(null);
   const goods: Good[] = ['diamond', 'gold', 'silver', 'cloth', 'spice', 'leather'];
   const componentImage = (kind: Good | 'camel' | 'seal' | 'card-back') =>
     `${assetBase}/components/${kind}.webp`;
@@ -320,6 +328,10 @@
   }
 
   function chooseHandCard(card: Card) {
+    if (suppressHandClickId === card.id) {
+      suppressHandClickId = null;
+      return;
+    }
     const loadedTarget = Object.entries(exchangeLoads).find(
       ([, returnId]) => returnId === card.id
     )?.[0];
@@ -335,22 +347,55 @@
     selectedHand = toggleSelection(selectedHand, card.id);
   }
 
-  function beginHandDrag(event: DragEvent, cardId: string) {
-    draggedHandCardId = cardId;
-    event.dataTransfer?.setData('text/plain', cardId);
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+  function beginHandPointer(event: PointerEvent, cardId: string) {
+    if (!event.isPrimary || event.button !== 0 || busy || status === 'offline') return;
+    pointerHandDrag = {
+      cardId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false
+    };
   }
 
-  function allowExchangeDrop(event: DragEvent, marketCardId: string) {
-    if (!marketGood(marketCardId) || status === 'offline' || busy) return;
+  function moveHandPointer(event: PointerEvent) {
+    if (!pointerHandDrag || event.pointerId !== pointerHandDrag.pointerId) return;
+    const distance = Math.hypot(
+      event.clientX - pointerHandDrag.startX,
+      event.clientY - pointerHandDrag.startY
+    );
+    if (!pointerHandDrag.moved && distance < 7) return;
+    if (!pointerHandDrag.moved) {
+      pointerHandDrag = { ...pointerHandDrag, moved: true };
+      draggedHandCardId = pointerHandDrag.cardId;
+    }
     event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
   }
 
-  function dropHandOnExchange(event: DragEvent, marketCardId: string) {
-    event.preventDefault();
-    const cardId = event.dataTransfer?.getData('text/plain') || draggedHandCardId;
-    if (cardId) assignExchangeReturn(marketCardId, cardId);
+  function finishHandPointer(event: PointerEvent) {
+    if (!pointerHandDrag || event.pointerId !== pointerHandDrag.pointerId) return;
+    const { cardId, moved } = pointerHandDrag;
+    if (moved) {
+      const dropTarget = document
+        .elementFromPoint(event.clientX, event.clientY)
+        ?.closest<HTMLElement>('[data-exchange-target]');
+      const marketCardId = dropTarget?.dataset.exchangeTarget;
+      if (marketCardId && !dropTarget.matches(':disabled')) {
+        assignExchangeReturn(marketCardId, cardId);
+      }
+      suppressHandClickId = cardId;
+      setTimeout(() => {
+        if (suppressHandClickId === cardId) suppressHandClickId = null;
+      });
+      event.preventDefault();
+    }
+    pointerHandDrag = null;
+    draggedHandCardId = null;
+  }
+
+  function cancelHandPointer(event: PointerEvent) {
+    if (!pointerHandDrag || event.pointerId !== pointerHandDrag.pointerId) return;
+    pointerHandDrag = null;
     draggedHandCardId = null;
   }
 
@@ -460,6 +505,12 @@
 <svelte:head>
   <title>Jaipur — Live card play</title>
 </svelte:head>
+
+<svelte:window
+  onpointermove={moveHandPointer}
+  onpointerup={finishHandPointer}
+  onpointercancel={cancelHandPointer}
+/>
 
 <a class="skip-link" href="#game-content">Skip to game</a>
 <main id="game-content" data-e2e-layout>
@@ -756,12 +807,12 @@
                       class="exchange-arrow card-return"
                       class:loaded={returnKind(card.id) === 'card'}
                       class:awaiting={activeExchangeTarget === card.id}
+                      class:drop-ready={Boolean(draggedHandCardId)}
                       type="button"
                       disabled={busy || status === 'offline' || (lobby.round.hands[uid]?.length ?? 0) === 0}
+                      data-exchange-target={card.id}
                       aria-label={`Choose a hand card to exchange for ${cardLabel(card.kind)} ${card.id}`}
                       aria-pressed={returnKind(card.id) === 'card' || activeExchangeTarget === card.id}
-                      ondragover={(event) => allowExchangeDrop(event, card.id)}
-                      ondrop={(event) => dropHandOnExchange(event, card.id)}
                       onclick={() => chooseCardExchange(card.id)}
                     >
                       <span aria-hidden="true">↑</span>
@@ -790,7 +841,10 @@
           style={`--zone-art: url("${componentImage('card-back')}")`}
         >
           <h2 id="hand-heading">Your hand</h2>
-          <div class="cards hand">
+          <div
+            class="cards hand"
+            style={`grid-template-columns: repeat(${Math.max(lobby.round.hands[uid]?.length ?? 0, 1)}, minmax(0, var(--card-size)));`}
+          >
           {#each lobby.round.hands[uid] ?? [] as card}
             {#if lobby.round.activeUid === uid}
               <button
@@ -799,7 +853,6 @@
                 class:dragging={draggedHandCardId === card.id}
                 type="button"
                 disabled={status === 'offline'}
-                draggable="true"
                 aria-label={exchangeReturnIds().includes(card.id)
                   ? `${cardLabel(card.kind)} ${card.id} loaded for exchange`
                   : activeExchangeTarget
@@ -807,8 +860,7 @@
                     : `${selectedHand.includes(card.id) ? 'Deselect' : 'Select'} ${cardLabel(card.kind)} ${card.id}`}
                 aria-pressed={selectedHand.includes(card.id) || exchangeReturnIds().includes(card.id)}
                 data-card-id={card.id}
-                ondragstart={(event) => beginHandDrag(event, card.id)}
-                ondragend={() => (draggedHandCardId = null)}
+                onpointerdown={(event) => beginHandPointer(event, card.id)}
                 onclick={() => chooseHandCard(card)}
               >
                 <PieceArt kind={card.kind} label={cardLabel(card.kind)} detail={card.id} />
@@ -1137,6 +1189,11 @@
     background: #fff0ce;
     box-shadow: inset 0 0 0 2px #d38b21;
   }
+  .exchange-arrow.drop-ready {
+    border-color: #315f58;
+    background: #dce8df;
+    box-shadow: inset 0 0 0 2px #315f58;
+  }
   .market-slot.loaded > .card-action,
   .market-slot.awaiting > .card-action {
     outline: 3px solid #d38b21;
@@ -1364,7 +1421,8 @@
   }
 
   .table {
-    --card-height: clamp(4.6rem, 19vh, 9rem);
+    --card-size: clamp(5.75rem, min(14vw, 18vh), 7.25rem);
+    --card-gap: clamp(0.15rem, 0.7vmin, 0.35rem);
     display: grid;
     width: 100%;
     flex: 1;
@@ -1479,17 +1537,35 @@
   }
   .cards {
     min-width: 0;
-    gap: clamp(0.15rem, 0.7vmin, 0.35rem);
+    gap: var(--card-gap);
   }
-  .cards.market { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-  .cards.hand { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .cards.market {
+    grid-template-columns: repeat(5, var(--card-size));
+    justify-content: space-between;
+  }
+  .cards.hand {
+    align-items: start;
+    justify-content: start;
+  }
+  .cards.hand > * {
+    justify-self: center;
+  }
+  .cards.hand > :first-child {
+    justify-self: start;
+  }
+  .cards.hand > :last-child {
+    justify-self: end;
+  }
   .cards article,
   .cards .card-action {
     position: relative;
     display: grid;
-    height: var(--card-height);
-    min-width: 0;
-    min-height: 44px;
+    width: var(--card-size);
+    height: var(--card-size);
+    min-width: var(--card-size);
+    min-height: var(--card-size);
+    aspect-ratio: 1;
+    flex: 0 0 var(--card-size);
     grid-template-rows: minmax(0, 1fr) auto;
     padding: 0.18rem;
     overflow: hidden;
@@ -1498,9 +1574,9 @@
     background: #183a37;
     color: white;
   }
-  .market-slot > article,
-  .market-slot > .card-action {
-    height: max(44px, calc(var(--card-height) - 2.75rem));
+  .market-slot,
+  .exchange-arrows {
+    width: var(--card-size);
   }
   .cards article.camel {
     background: #a23e2a;
@@ -1527,6 +1603,23 @@
     text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .hand-card {
+    touch-action: none;
+    user-select: none;
+  }
+  .hand-card.dragging {
+    z-index: 20;
+    opacity: 0.55;
+    transform: scale(0.98);
+  }
+  .hand-card:focus-visible,
+  .hand-card.selected {
+    z-index: 10;
+  }
+  :global(.cards.hand .piece-label) {
+    padding-left: 0.35rem;
+    text-align: left;
   }
   :global(.cards small) {
     display: none;
@@ -1756,7 +1849,6 @@
       height: 1.65rem;
     }
     .table {
-      --card-height: 5.2rem;
       grid-template:
         'meta seals' auto
         'market market' minmax(0, auto)
@@ -1774,7 +1866,8 @@
       gap: 0.15rem;
     }
     .cards.market {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(3, var(--card-size));
+      justify-content: space-around;
     }
     .cards article,
     .cards .card-action {
@@ -1831,7 +1924,7 @@
         minmax(0, 1fr) minmax(0, 1fr);
     }
     .cards.market {
-      grid-template-columns: repeat(5, minmax(0, 1fr));
+      grid-template-columns: repeat(5, var(--card-size));
     }
   }
 
@@ -1893,15 +1986,14 @@
       display: none;
     }
     .hero.compact {
-      padding: 0.25rem 0.4rem 3rem;
+      padding: 0.25rem 0.4rem 2.5rem;
     }
     .table {
-      --card-height: clamp(4.2rem, 20vh, 4.8rem);
       grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
       gap: 0.2rem 0.4rem;
     }
     .cards.market {
-      grid-template-columns: repeat(5, minmax(0, 1fr));
+      grid-template-columns: repeat(5, var(--card-size));
     }
     .cards.hand {
       gap: 0;

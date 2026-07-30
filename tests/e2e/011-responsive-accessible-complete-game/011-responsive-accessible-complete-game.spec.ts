@@ -65,10 +65,23 @@ test('the complete table is responsive and accessible by keyboard and touch', as
   await expect(diamondReturn).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Clear' }).click();
 
-  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
-  await draggedCard.dispatchEvent('dragstart', { dataTransfer });
-  await diamondReturn.dispatchEvent('dragover', { dataTransfer });
-  await diamondReturn.dispatchEvent('drop', { dataTransfer });
+  const draggedBox = await draggedCard.boundingBox();
+  const destinationBox = await diamondReturn.boundingBox();
+  expect(draggedBox).not.toBeNull();
+  expect(destinationBox).not.toBeNull();
+  await page.mouse.move(
+    (draggedBox?.x ?? 0) + (draggedBox?.width ?? 0) / 2,
+    (draggedBox?.y ?? 0) + (draggedBox?.height ?? 0) / 2
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    (destinationBox?.x ?? 0) + (destinationBox?.width ?? 0) / 2,
+    (destinationBox?.y ?? 0) + (destinationBox?.height ?? 0) / 2,
+    { steps: 8 }
+  );
+  await expect(draggedCard).toHaveClass(/dragging/);
+  await page.mouse.up();
+  await expect(diamondReturn).toHaveAttribute('aria-pressed', 'true');
 
   const keyboardCard = handCards.nth(1);
   await keyboardCard.focus();
@@ -91,6 +104,24 @@ test('the complete table is responsive and accessible by keyboard and touch', as
           await expect(goldReturn).toHaveAttribute('aria-pressed', 'true');
           await expect(page.locator('.interaction-tray p')).toContainText('2 market cards loaded');
           await expect(confirmExchange).toBeEnabled();
+        }
+      },
+      {
+        spec: 'Market and hand cards keep one square physical footprint',
+        check: async () => {
+          const cardBoxes = await page
+            .locator('.market .card-action, .hand .card-action')
+            .evaluateAll((cards) =>
+              cards.map((card) => {
+                const box = card.getBoundingClientRect();
+                return { width: box.width, height: box.height };
+              })
+            );
+          expect(cardBoxes.length).toBeGreaterThan(5);
+          for (const box of cardBoxes) {
+            expect(Math.abs(box.width - box.height)).toBeLessThanOrEqual(1);
+            expect(Math.abs(box.width - cardBoxes[0].width)).toBeLessThanOrEqual(1);
+          }
         }
       },
       {

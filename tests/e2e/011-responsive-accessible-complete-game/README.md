@@ -9,6 +9,7 @@ The complete market remains legible and operable by keyboard and touch at phone 
 **Verifications:**
 
 - [x] Both card-back destinations expose their loaded pressed state
+- [x] Market and hand cards keep one square physical footprint
 - [x] Keyboard focus is visible and turn changes are announced politely
 - [x] All available controls meet the 44-pixel touch target and have accessible names
 - [x] Reduced-motion preference removes card transitions

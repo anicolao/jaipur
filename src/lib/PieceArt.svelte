@@ -13,6 +13,11 @@
   } = $props();
 </script>
 
-<img class="piece-image" src={`${assetBase}/components/${kind}.webp`} alt="" />
+<img
+  class="piece-image"
+  src={`${assetBase}/components/${kind}.webp`}
+  alt=""
+  draggable="false"
+/>
 <span class="piece-label">{label}</span>
 {#if detail}<small>{detail}</small>{/if}

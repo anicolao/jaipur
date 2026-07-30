@@ -90,8 +90,10 @@ the source prompts, inventory, and usage map.
 On a turn, clicking a goods card takes it and clicking any market camel takes
 the complete camel group. Each market good has camel and hand-card exchange
 destinations beneath it. Returns can be routed by selecting either end first or
-by dragging a hand card onto a card-back destination, then a legal multi-card
-trade is confirmed as one action. Hand cards can also be selected and sold by
+by dragging a hand card onto a card-back destination with a mouse, pen, or
+touch gesture, then a legal multi-card trade is confirmed as one action. Cards
+keep one square physical footprint between the market and either hand; crowded
+hands overlap instead of shrinking the cards. Hand cards can also be selected and sold by
 clicking their matching token stack; clicking a stack with no selection sells
 all legal cards of that kind.
 
