@@ -23,6 +23,10 @@ test('application shell reaches Firebase and renders deterministically', async (
             'The bazaar is almost ready.'
           );
           await expect(page.locator('.goods span')).toHaveCount(6);
+          await expect(page.getByLabel('Your trader name')).toBeVisible();
+          await expect(page.getByLabel('Game code — choose one or paste an invite')).toBeVisible();
+          await expect(page.getByRole('button', { name: 'Create game' })).toBeDisabled();
+          await expect(page.getByRole('button', { name: 'Join game' })).toBeDisabled();
         }
       },
       {

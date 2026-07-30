@@ -9,9 +9,11 @@ test('two anonymous traders share an append-only lobby', async ({ browser, page 
     'Two isolated anonymous browser contexts converge on the same Jaipur room.'
   );
 
-  await page.goto(`/?gameId=${gameId}`);
+  await page.goto('/');
   await page.getByLabel('Your trader name').fill('Asha');
+  await page.getByLabel('Game code — choose one or paste an invite').fill(gameId);
   await page.getByRole('button', { name: 'Create game' }).click();
+  await expect(page).toHaveURL(new RegExp(`[?&]gameId=${gameId}(?:&|$)`));
   await expect(page.getByText('Waiting for a rival…')).toBeVisible();
 
   const rivalContext = await browser.newContext();

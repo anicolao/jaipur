@@ -113,6 +113,7 @@
         displayName: displayName.trim()
       });
       localStorage.setItem(`jaipur:${requestedGameId.trim()}:${uid}:name`, displayName.trim());
+      shellOnly = false;
       const params = new URLSearchParams(location.search);
       params.set('gameId', requestedGameId.trim());
       replaceState(`?${params.toString()}`, {});
@@ -348,24 +349,30 @@
         <span class="spice">Spice</span>
         <span class="leather">Leather</span>
       </div>
-    {:else if !lobby.gameId}
+    {/if}
+
+    {#if !lobby.gameId}
       <form class="join-card" onsubmit={(event) => event.preventDefault()}>
         <label>
           Your trader name
           <input maxlength="32" autocomplete="name" bind:value={displayName} />
         </label>
         <label>
-          Game code
+          Game code — choose one or paste an invite
           <input maxlength="48" autocomplete="off" bind:value={requestedGameId} />
         </label>
         <div class="actions">
-          <button type="button" disabled={busy || !displayName.trim()} onclick={() => connect('create')}>
+          <button
+            type="button"
+            disabled={busy || !displayName.trim() || !requestedGameId.trim()}
+            onclick={() => connect('create')}
+          >
             Create game
           </button>
           <button
             class="secondary"
             type="button"
-            disabled={busy || !displayName.trim()}
+            disabled={busy || !displayName.trim() || !requestedGameId.trim()}
             onclick={() => connect('join')}>Join game</button
           >
         </div>

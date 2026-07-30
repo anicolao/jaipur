@@ -20,6 +20,13 @@ commit contract, and vertical-slice sequence.
 - Reconnect and replay from the complete immutable event history.
 - Keyboard-, touch-, phone-, tablet-, and desktop-friendly play.
 
+## Play
+
+Open [the live game](https://anicolao.github.io/jaipur/), enter your trader
+name, choose a game code, and create the room. Share the resulting invite URL
+with your rival; they enter their name and join the same room. Both players
+then mark themselves ready and the host opens the first round.
+
 ## Technical foundation
 
 - SvelteKit, TypeScript, Bun, and `@sveltejs/adapter-static`.
