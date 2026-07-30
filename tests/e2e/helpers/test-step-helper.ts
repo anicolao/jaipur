@@ -81,6 +81,11 @@ export class TestStepHelper {
       for (let left = 0; left < controls.length; left += 1) {
         const first = controls[left].getBoundingClientRect();
         for (let right = left + 1; right < controls.length; right += 1) {
+          const intentionalHandOverlap =
+            controls[left].classList.contains('hand-card') &&
+            controls[right].classList.contains('hand-card') &&
+            controls[left].closest('.hand') === controls[right].closest('.hand');
+          if (intentionalHandOverlap) continue;
           const second = controls[right].getBoundingClientRect();
           const overlapWidth = Math.min(first.right, second.right) - Math.max(first.left, second.left);
           const overlapHeight = Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top);
