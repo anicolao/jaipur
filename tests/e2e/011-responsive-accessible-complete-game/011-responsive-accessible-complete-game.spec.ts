@@ -50,33 +50,46 @@ test('the complete table is responsive and accessible by keyboard and touch', as
     theme_color: '#183a37'
   });
 
-  const exchange = page.getByRole('button', { name: 'Exchange goods' });
-  await exchange.focus();
-  await expect(exchange).toBeFocused();
+  const handCards = page.locator('.hand .hand-card');
+  const draggedCard = handCards.first();
+  const diamondReturn = page.getByRole('button', {
+    name: /^Choose a hand card to exchange for Diamond/
+  });
+  await diamondReturn.focus();
   await page.keyboard.press('Enter');
-  const diamond = page.getByRole('button', { name: /^Select Diamond/ });
-  await diamond.focus();
+  await expect(page.locator('.interaction-tray p')).toContainText(
+    'Choose or drag a hand card'
+  );
+  await handCards.first().focus();
   await page.keyboard.press('Space');
-  const gold = page.getByRole('button', { name: /^Select Gold/ });
-  await gold.focus();
+  await expect(diamondReturn).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Clear' }).click();
+
+  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+  await draggedCard.dispatchEvent('dragstart', { dataTransfer });
+  await diamondReturn.dispatchEvent('dragover', { dataTransfer });
+  await diamondReturn.dispatchEvent('drop', { dataTransfer });
+
+  const keyboardCard = handCards.nth(1);
+  await keyboardCard.focus();
   await page.keyboard.press('Space');
-  for (const camel of ['Return camel 1', 'Return camel 2']) {
-    const returnButton = page.getByRole('button', { name: camel });
-    await returnButton.focus();
-    await page.keyboard.press('Space');
-  }
-  const confirmExchange = page.getByRole('button', { name: /^Confirm 2 for 2/ });
+  const goldReturn = page.getByRole('button', {
+    name: /^Choose a hand card to exchange for Gold/
+  });
+  await goldReturn.focus();
+  await page.keyboard.press('Enter');
+  const confirmExchange = page.getByRole('button', { name: 'Trade 2 for 2' });
   await confirmExchange.focus();
 
   await steps.step('keyboard-exchange', {
-    description: 'A complete exchange is composed with only the keyboard',
+    description: 'A direct exchange is composed by drag and drop plus keyboard routing',
     verifications: [
       {
-        spec: 'Every selection has a text label, pressed state, and visible instructions',
+        spec: 'Both card-back destinations expose their loaded pressed state',
         check: async () => {
-          await expect(diamond).toHaveAttribute('aria-pressed', 'true');
-          await expect(gold).toHaveAttribute('aria-pressed', 'true');
-          await expect(page.getByText('Select at least two market goods')).toBeVisible();
+          await expect(diamondReturn).toHaveAttribute('aria-pressed', 'true');
+          await expect(goldReturn).toHaveAttribute('aria-pressed', 'true');
+          await expect(page.locator('.interaction-tray p')).toContainText('2 market cards loaded');
           await expect(confirmExchange).toBeEnabled();
         }
       },
@@ -100,7 +113,7 @@ test('the complete table is responsive and accessible by keyboard and touch', as
         spec: 'Reduced-motion preference removes card transitions',
         check: async () => {
           await expect
-            .poll(() => diamond.evaluate((element) => getComputedStyle(element).transitionDuration))
+            .poll(() => draggedCard.evaluate((element) => getComputedStyle(element).transitionDuration))
             .toMatch(/^0s/);
         }
       }
@@ -109,29 +122,20 @@ test('the complete table is responsive and accessible by keyboard and touch', as
 
   await page.keyboard.press('Enter');
   await expect(rival.getByText("Belen's turn")).toBeVisible();
-  const sell = rival.getByRole('button', { name: 'Sell goods' });
-  await sell.focus();
-  await rival.keyboard.press('Enter');
   for (const cardId of ['leather-03', 'leather-06']) {
     const card = rival.getByRole('button', {
-      name: `Select Leather ${cardId} for sale`
+      name: `Select Leather ${cardId}`
     });
     await card.focus();
     await rival.keyboard.press('Space');
   }
-  const confirmSale = rival.getByRole('button', { name: 'Sell 2 Leather' });
+  const confirmSale = rival.getByRole('button', {
+    name: 'Sell 2 selected Leather to the Leather token stack'
+  });
   await confirmSale.focus();
   await rival.keyboard.press('Enter');
   await expect(page.getByText("Asha's turn")).toBeVisible();
 
-  const offline = page.getByRole('button', { name: 'Work offline' });
-  await offline.focus();
-  await page.keyboard.press('Enter');
-  await expect(page.locator('[data-status]')).toHaveAttribute('data-status', 'offline');
-  const reconnect = page.getByRole('button', { name: 'Reconnect' });
-  await reconnect.focus();
-  await page.keyboard.press('Enter');
-  await expect(page.locator('[data-status]')).toHaveAttribute('data-status', 'synced');
   await steps.step('touch-ready-table', {
     description: 'The synchronized table exposes every state without relying on colour',
     verifications: [
@@ -150,10 +154,11 @@ test('the complete table is responsive and accessible by keyboard and touch', as
         }
       },
       {
-        spec: 'Reconnect is keyboard operable and returns to an announced synchronized state',
+        spec: 'Connection state remains announced without an offline-mode control',
         check: async () => {
           await expect(page.locator('[data-status]')).toContainText('Game synced');
-          await expect(page.getByRole('button', { name: 'Work offline' })).toBeVisible();
+          await expect(page.getByRole('button', { name: 'Work offline' })).toHaveCount(0);
+          await expect(page.getByTestId('build-marker')).toHaveText('Build e2e-tes');
         }
       },
       {

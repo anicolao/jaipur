@@ -2,9 +2,9 @@
 
 Asha and Belen play production-size rounds until one earns two seals, then begin a clean rematch.
 
-## The match ends after 2 rounds and 125 ordinary actions
+## The match ends after 3 rounds and 195 ordinary actions
 
-![The match ends after 2 rounds and 125 ordinary actions](./screenshots/000-match-won-desktop.png)
+![The match ends after 3 rounds and 195 ordinary actions](./screenshots/000-match-won-desktop.png)
 
 **Verifications:**
 

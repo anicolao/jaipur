@@ -15,11 +15,9 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
     'fixed-round-007-15'
   );
 
-  await page.getByRole('button', { name: 'Sell goods' }).click();
-  for (const card of ['spice-04', 'spice-02', 'spice-08']) {
-    await page.getByRole('button', { name: `Select Spice ${card} for sale` }).click();
-  }
-  await page.getByRole('button', { name: 'Sell 3 Spice' }).click();
+  await page.getByRole('button', {
+    name: 'Sell all 3 Spice to the Spice token stack'
+  }).click();
 
   await steps.step('large-sale', {
     description: 'A three-card sale awards ordered goods tokens and one hidden bonus',
@@ -52,9 +50,10 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
     ]
   });
 
-  await rival.getByRole('button', { name: 'Sell goods' }).click();
-  await rival.getByRole('button', { name: 'Select Spice spice-03 for sale' }).click();
-  await rival.getByRole('button', { name: 'Sell 1 Spice' }).click();
+  await rival.getByRole('button', { name: 'Select Spice spice-03' }).click();
+  await rival.getByRole('button', {
+    name: 'Sell 1 selected Spice to the Spice token stack'
+  }).click();
 
   await steps.step('ordinary-sale', {
     description: 'Belen completes a one-card ordinary-goods sale',

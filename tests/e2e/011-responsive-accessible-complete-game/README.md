@@ -2,13 +2,13 @@
 
 The complete market remains legible and operable by keyboard and touch at phone portrait, phone landscape, tablet, and desktop sizes.
 
-## A complete exchange is composed with only the keyboard
+## A direct exchange is composed by drag and drop plus keyboard routing
 
-![A complete exchange is composed with only the keyboard](./screenshots/000-keyboard-exchange-desktop.png)
+![A direct exchange is composed by drag and drop plus keyboard routing](./screenshots/000-keyboard-exchange-desktop.png)
 
 **Verifications:**
 
-- [x] Every selection has a text label, pressed state, and visible instructions
+- [x] Both card-back destinations expose their loaded pressed state
 - [x] Keyboard focus is visible and turn changes are announced politely
 - [x] All available controls meet the 44-pixel touch target and have accessible names
 - [x] Reduced-motion preference removes card transitions
@@ -20,6 +20,6 @@ The complete market remains legible and operable by keyboard and touch at phone 
 **Verifications:**
 
 - [x] Market, private hand, public supplies, and hidden rival information remain labelled
-- [x] Reconnect is keyboard operable and returns to an announced synchronized state
+- [x] Connection state remains announced without an offline-mode control
 - [x] All remaining controls retain accessible names and touch-sized targets
 - [x] The complete table fits the viewport without document scrolling

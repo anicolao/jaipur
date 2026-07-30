@@ -15,9 +15,9 @@ test('the active trader takes one good and refills the market', async ({ browser
     'fixed-round-004'
   );
 
-  const handBefore = await page.locator('.hand article').count();
+  const handBefore = await page.locator('.hand [data-card-id]').count();
   const deckBefore = Number(await page.getByText('Deck').locator('..').locator('strong').textContent());
-  const target = page.locator('.market .card-action').first();
+  const target = page.locator('.market .card-action:not(.camel)').first();
   const cardId = await target.getAttribute('data-card-id');
   await target.click();
 
@@ -28,13 +28,13 @@ test('the active trader takes one good and refills the market', async ({ browser
         spec: 'The selected stable card ID is now in the local hand',
         check: async () => {
           await expect(page.locator(`.hand [data-card-id="${cardId}"]`)).toBeVisible();
-          await expect(page.locator('.hand article')).toHaveCount(handBefore + 1);
+          await expect(page.locator('.hand [data-card-id]')).toHaveCount(handBefore + 1);
         }
       },
       {
         spec: 'The market is refilled and the deck decreases by one',
         check: async () => {
-          await expect(page.locator('.market').locator('article, button')).toHaveCount(5);
+          await expect(page.locator('.market .market-slot')).toHaveCount(5);
           await expect(page.getByText('Deck').locator('..')).toContainText(String(deckBefore - 1));
         }
       },

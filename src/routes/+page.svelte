@@ -33,16 +33,14 @@
   let repository = $state<GameRepository>();
   let busy = $state(false);
   let shellOnly = $state(true);
-  let exchangeMode = $state(false);
-  let selectedMarket = $state<string[]>([]);
-  let selectedReturn = $state<string[]>([]);
-  let saleMode = $state(false);
-  let saleKind = $state<Good | null>(null);
-  let selectedSale = $state<string[]>([]);
-  let requestedOffline = $state(false);
+  let exchangeLoads = $state<Record<string, string>>({});
+  let activeExchangeTarget = $state<string | null>(null);
+  let selectedHand = $state<string[]>([]);
+  let draggedHandCardId = $state<string | null>(null);
   const goods: Good[] = ['diamond', 'gold', 'silver', 'cloth', 'spice', 'leather'];
   const componentImage = (kind: Good | 'camel' | 'seal' | 'card-back') =>
     `${assetBase}/components/${kind}.webp`;
+  const buildHash = (import.meta.env.VITE_GIT_HASH ?? 'local').slice(0, 7);
 
   onMount(async () => {
     try {
@@ -92,20 +90,10 @@
       },
       showError,
       (repositoryStatus) => {
-        if (repositoryStatus === 'offline' && requestedOffline) {
-          status = 'offline';
-          statusText = 'Offline — cached view only';
-          return;
-        }
         if (status === 'conflict' || status === 'incompatible') return;
-        status =
-          repositoryStatus === 'offline' && !requestedOffline ? 'syncing' : repositoryStatus;
+        status = repositoryStatus === 'offline' ? 'syncing' : repositoryStatus;
         statusText =
-          status === 'offline'
-            ? 'Offline — cached view only'
-            : status === 'syncing'
-              ? 'Synchronizing game…'
-              : 'Game synced';
+          status === 'syncing' ? 'Synchronizing game…' : 'Game synced';
       }
     );
     return attached;
@@ -198,20 +186,6 @@
     }
   }
 
-  async function goOffline() {
-    if (!repository) return;
-    requestedOffline = true;
-    await repository.disconnect();
-  }
-
-  async function reconnect() {
-    if (!repository) return;
-    requestedOffline = false;
-    status = 'syncing';
-    statusText = 'Synchronizing game…';
-    await repository.reconnect();
-  }
-
   async function takeOne(cardId: string) {
     if (!repository || lobby.round?.activeUid !== uid) return;
     busy = true;
@@ -221,6 +195,7 @@
         roundNumber: lobby.round.number,
         turnNumber: lobby.round.turnNumber
       });
+      resetInteractions();
     } catch (error) {
       showError(error);
     } finally {
@@ -236,6 +211,7 @@
         roundNumber: lobby.round.number,
         turnNumber: lobby.round.turnNumber
       });
+      resetInteractions();
     } catch (error) {
       showError(error);
     } finally {
@@ -247,48 +223,148 @@
     return list.includes(id) ? list.filter((value) => value !== id) : [...list, id];
   }
 
-  function cancelExchange() {
-    exchangeMode = false;
-    selectedMarket = [];
-    selectedReturn = [];
+  function resetInteractions() {
+    exchangeLoads = {};
+    activeExchangeTarget = null;
+    selectedHand = [];
+    draggedHandCardId = null;
   }
 
-  function cancelSale() {
-    saleMode = false;
-    saleKind = null;
-    selectedSale = [];
+  function exchangeMarketIds(): string[] {
+    return Object.keys(exchangeLoads);
   }
 
-  function beginExchange() {
-    cancelSale();
-    exchangeMode = true;
+  function exchangeReturnIds(): string[] {
+    return Object.values(exchangeLoads);
   }
 
-  function beginSale() {
-    cancelExchange();
-    saleMode = true;
+  function handCard(cardId: string): Card | undefined {
+    return lobby.round?.hands[uid]?.find(({ id }) => id === cardId);
   }
 
-  function toggleSale(card: Card) {
-    if (selectedSale.includes(card.id)) {
-      selectedSale = selectedSale.filter((id) => id !== card.id);
-      if (selectedSale.length === 0) saleKind = null;
+  function herdCamel(cardId: string): Card | undefined {
+    return lobby.round?.herds[uid]?.find(({ id }) => id === cardId);
+  }
+
+  function marketGood(cardId: string): Card | undefined {
+    return lobby.round?.market.find(({ id, kind }) => id === cardId && kind !== 'camel');
+  }
+
+  function returnKind(marketCardId: string): 'camel' | 'card' | null {
+    const returnId = exchangeLoads[marketCardId];
+    if (!returnId) return null;
+    return herdCamel(returnId) ? 'camel' : 'card';
+  }
+
+  function availableCamel(marketCardId: string): Card | undefined {
+    const currentReturn = exchangeLoads[marketCardId];
+    const usedReturns = new Set(
+      Object.entries(exchangeLoads)
+        .filter(([targetId]) => targetId !== marketCardId)
+        .map(([, returnId]) => returnId)
+    );
+    return lobby.round?.herds[uid]?.find(
+      ({ id }) => id === currentReturn || !usedReturns.has(id)
+    );
+  }
+
+  function assignExchangeReturn(marketCardId: string, returnCardId: string) {
+    if (
+      !marketGood(marketCardId) ||
+      (!handCard(returnCardId) && !herdCamel(returnCardId))
+    ) {
       return;
     }
-    if (saleKind && saleKind !== card.kind) return;
-    saleKind = card.kind as Good;
-    selectedSale = [...selectedSale, card.id];
+    const nextLoads = Object.fromEntries(
+      Object.entries(exchangeLoads).filter(
+        ([targetId, loadedReturnId]) =>
+          targetId !== marketCardId && loadedReturnId !== returnCardId
+      )
+    );
+    exchangeLoads = { ...nextLoads, [marketCardId]: returnCardId };
+    selectedHand = selectedHand.filter((id) => id !== returnCardId);
+    activeExchangeTarget = null;
+  }
+
+  function unloadExchange(marketCardId: string) {
+    exchangeLoads = Object.fromEntries(
+      Object.entries(exchangeLoads).filter(([targetId]) => targetId !== marketCardId)
+    );
+    if (activeExchangeTarget === marketCardId) activeExchangeTarget = null;
+  }
+
+  function loadCamelExchange(marketCardId: string) {
+    if (returnKind(marketCardId) === 'camel') {
+      unloadExchange(marketCardId);
+      return;
+    }
+    const camel = availableCamel(marketCardId);
+    if (camel) assignExchangeReturn(marketCardId, camel.id);
+  }
+
+  function chooseCardExchange(marketCardId: string) {
+    if (returnKind(marketCardId) === 'card' && selectedHand.length === 0) {
+      unloadExchange(marketCardId);
+      activeExchangeTarget = marketCardId;
+      return;
+    }
+    const selectedReturn = selectedHand.find(
+      (cardId) => !exchangeReturnIds().includes(cardId) && handCard(cardId)
+    );
+    if (selectedReturn) {
+      assignExchangeReturn(marketCardId, selectedReturn);
+      return;
+    }
+    activeExchangeTarget =
+      activeExchangeTarget === marketCardId ? null : marketCardId;
+  }
+
+  function chooseHandCard(card: Card) {
+    const loadedTarget = Object.entries(exchangeLoads).find(
+      ([, returnId]) => returnId === card.id
+    )?.[0];
+    if (loadedTarget) {
+      unloadExchange(loadedTarget);
+      selectedHand = [...selectedHand, card.id];
+      return;
+    }
+    if (activeExchangeTarget) {
+      assignExchangeReturn(activeExchangeTarget, card.id);
+      return;
+    }
+    selectedHand = toggleSelection(selectedHand, card.id);
+  }
+
+  function beginHandDrag(event: DragEvent, cardId: string) {
+    draggedHandCardId = cardId;
+    event.dataTransfer?.setData('text/plain', cardId);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+  }
+
+  function allowExchangeDrop(event: DragEvent, marketCardId: string) {
+    if (!marketGood(marketCardId) || status === 'offline' || busy) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  }
+
+  function dropHandOnExchange(event: DragEvent, marketCardId: string) {
+    event.preventDefault();
+    const cardId = event.dataTransfer?.getData('text/plain') || draggedHandCardId;
+    if (cardId) assignExchangeReturn(marketCardId, cardId);
+    draggedHandCardId = null;
   }
 
   function projectedHandSize() {
     if (!lobby.round) return 0;
-    const handReturns = selectedReturn.filter((id) =>
+    const handReturns = exchangeReturnIds().filter((id) =>
       lobby.round?.hands[uid]?.some((card) => card.id === id)
     ).length;
-    return (lobby.round.hands[uid]?.length ?? 0) - handReturns + selectedMarket.length;
+    return (lobby.round.hands[uid]?.length ?? 0) - handReturns + exchangeMarketIds().length;
   }
 
   async function confirmExchange() {
+    const selectedMarket = exchangeMarketIds();
+    const selectedReturn = exchangeReturnIds();
     if (
       !repository ||
       !lobby.round ||
@@ -304,7 +380,7 @@
         roundNumber: lobby.round.number,
         turnNumber: lobby.round.turnNumber
       });
-      cancelExchange();
+      resetInteractions();
     } catch (error) {
       showError(error);
     } finally {
@@ -312,24 +388,57 @@
     }
   }
 
-  async function confirmSale() {
+  function saleCardsFor(kind: Good): string[] {
+    if (selectedHand.length > 0) return selectedHand;
+    return (lobby.round?.hands[uid] ?? [])
+      .filter((card) => card.kind === kind)
+      .map(({ id }) => id);
+  }
+
+  function canSellTo(kind: Good): boolean {
+    if (
+      busy ||
+      status === 'offline' ||
+      lobby.round?.activeUid !== uid ||
+      exchangeMarketIds().length > 0 ||
+      Boolean(activeExchangeTarget) ||
+      lobby.round.goodsTokens[kind].length === 0
+    ) {
+      return false;
+    }
+    const cardIds = saleCardsFor(kind);
+    return (
+      cardIds.length > 0 &&
+      cardIds.every((cardId) => handCard(cardId)?.kind === kind) &&
+      isLegalSale(lobby.round, uid, kind, cardIds)
+    );
+  }
+
+  function saleActionLabel(kind: Good): string {
+    const cardIds = saleCardsFor(kind);
+    const selection = selectedHand.length > 0 ? `${cardIds.length} selected` : `all ${cardIds.length}`;
+    return `Sell ${selection} ${cardLabel(kind)} to the ${cardLabel(kind)} token stack`;
+  }
+
+  async function sellToStack(kind: Good) {
+    const cardIds = saleCardsFor(kind);
     if (
       !repository ||
       !lobby.round ||
-      !saleKind ||
-      !isLegalSale(lobby.round, uid, saleKind, selectedSale)
+      !cardIds.every((cardId) => handCard(cardId)?.kind === kind) ||
+      !isLegalSale(lobby.round, uid, kind, cardIds)
     ) {
       return;
     }
     busy = true;
     try {
       await repository.append('cards/sold', {
-        kind: saleKind,
-        cardIds: selectedSale,
+        kind,
+        cardIds,
         roundNumber: lobby.round.number,
         turnNumber: lobby.round.turnNumber
       });
-      cancelSale();
+      resetInteractions();
     } catch (error) {
       showError(error);
     } finally {
@@ -577,86 +686,90 @@
           style={`--zone-art: url("${componentImage('card-back')}")`}
         >
           <h2 id="market-heading">Market</h2>
-          {#if lobby.round.activeUid === uid}
-            <div class="turn-actions">
-              <button
-                class="secondary"
-                type="button"
-                disabled={status === 'offline'}
-                aria-pressed={exchangeMode}
-                onclick={() => (exchangeMode ? cancelExchange() : beginExchange())}
-              >
-                {exchangeMode ? 'Cancel exchange' : 'Exchange goods'}
-              </button>
-              <button
-                class="secondary"
-                type="button"
-                disabled={status === 'offline'}
-                aria-pressed={saleMode}
-                onclick={() => (saleMode ? cancelSale() : beginSale())}
-              >
-                {saleMode ? 'Cancel sale' : 'Sell goods'}
-              </button>
-              {#if exchangeMode}
+          {#if lobby.round.activeUid === uid && (exchangeMarketIds().length > 0 || activeExchangeTarget || selectedHand.length > 0)}
+            <div class="interaction-tray" aria-live="polite">
+              <p>
+                {#if activeExchangeTarget}
+                  Choose or drag a hand card to the highlighted card-back arrow.
+                {:else if exchangeMarketIds().length > 0}
+                  {exchangeMarketIds().length} market
+                  {exchangeMarketIds().length === 1 ? 'card' : 'cards'} loaded ·
+                  hand {projectedHandSize()} / 7
+                {:else}
+                  {selectedHand.length} hand {selectedHand.length === 1 ? 'card' : 'cards'} selected ·
+                  choose a matching token stack or a card-back arrow.
+                {/if}
+              </p>
+              {#if exchangeMarketIds().length > 0}
                 <button
                   type="button"
-                  disabled={!isLegalExchange(lobby.round, uid, selectedMarket, selectedReturn) || busy || status === 'offline'}
+                  disabled={!isLegalExchange(lobby.round, uid, exchangeMarketIds(), exchangeReturnIds()) || busy || status === 'offline'}
                   onclick={confirmExchange}
                 >
-                  Confirm {selectedMarket.length} for {selectedReturn.length} · hand {projectedHandSize()} / 7
-                </button>
-              {:else if saleMode}
-                <button
-                  type="button"
-                  disabled={!saleKind || !isLegalSale(lobby.round, uid, saleKind, selectedSale) || busy || status === 'offline'}
-                  onclick={confirmSale}
-                >
-                  Sell {selectedSale.length} {saleKind ? cardLabel(saleKind) : 'goods'}
+                  Trade {exchangeMarketIds().length} for {exchangeReturnIds().length}
                 </button>
               {/if}
+              <button class="secondary" type="button" onclick={resetInteractions}>Clear</button>
             </div>
-            {#if exchangeMode}
-              <p class="action-guidance" id="exchange-guidance">
-                Select at least two market goods, then return the same number of hand goods or
-                camels. Selected cards are marked with a gold outline and announced as selected.
-              </p>
-            {:else if saleMode}
-              <p class="action-guidance" id="sale-guidance">
-                Select one goods family from your hand. Diamonds, gold, and silver require at
-                least two cards. Selected cards are marked with a gold outline and announced as
-                selected.
-              </p>
-            {/if}
-          {/if}
-          {#if !exchangeMode && !saleMode && lobby.round.activeUid === uid && lobby.round.market.some((card) => card.kind === 'camel')}
-            <button class="take-camels" type="button" disabled={busy || status === 'offline'} onclick={takeCamels}>
-              Take all {lobby.round.market.filter((card) => card.kind === 'camel').length} camels
-            </button>
           {/if}
           <div class="cards market">
             {#each lobby.round.market as card}
-              {#if card.kind !== 'camel' && lobby.round.activeUid === uid && !saleMode && (exchangeMode || (lobby.round.hands[uid]?.length ?? 0) < 7)}
-                <button
-                  class="card-action"
-                  class:selected={selectedMarket.includes(card.id)}
-                  type="button"
-                  disabled={busy || status === 'offline'}
-                  aria-label={`${exchangeMode ? 'Select' : 'Take'} ${cardLabel(card.kind)} ${card.id}`}
-                  aria-pressed={exchangeMode ? selectedMarket.includes(card.id) : undefined}
-                  aria-describedby={exchangeMode ? 'exchange-guidance' : undefined}
-                  data-card-id={card.id}
-                  onclick={() =>
-                    exchangeMode
-                      ? (selectedMarket = toggleSelection(selectedMarket, card.id))
-                      : takeOne(card.id)}
-                >
-                  <PieceArt kind={card.kind} label={cardLabel(card.kind)} detail={card.id} />
-                </button>
-              {:else}
-                <article class:camel={card.kind === 'camel'} data-card-id={card.id}>
-                  <PieceArt kind={card.kind} label={cardLabel(card.kind)} detail={card.id} />
-                </article>
-              {/if}
+              <div
+                class="market-slot"
+                class:loaded={Boolean(exchangeLoads[card.id])}
+                class:awaiting={activeExchangeTarget === card.id}
+              >
+                {#if lobby.round.activeUid === uid}
+                  <button
+                    class="card-action"
+                    class:camel={card.kind === 'camel'}
+                    type="button"
+                    disabled={busy || status === 'offline' || (card.kind !== 'camel' && (lobby.round.hands[uid]?.length ?? 0) >= 7)}
+                    aria-label={card.kind === 'camel'
+                      ? `Take all ${lobby.round.market.filter(({ kind }) => kind === 'camel').length} camels`
+                      : `Take ${cardLabel(card.kind)} ${card.id}`}
+                    data-card-id={card.id}
+                    onclick={() => card.kind === 'camel' ? takeCamels() : takeOne(card.id)}
+                  >
+                    <PieceArt kind={card.kind} label={cardLabel(card.kind)} detail={card.id} />
+                  </button>
+                {:else}
+                  <article class:camel={card.kind === 'camel'} data-card-id={card.id}>
+                    <PieceArt kind={card.kind} label={cardLabel(card.kind)} detail={card.id} />
+                  </article>
+                {/if}
+                {#if card.kind !== 'camel' && lobby.round.activeUid === uid}
+                  <div class="exchange-arrows" aria-label={`Exchange destinations for ${cardLabel(card.kind)} ${card.id}`}>
+                    <button
+                      class="exchange-arrow"
+                      class:loaded={returnKind(card.id) === 'camel'}
+                      type="button"
+                      disabled={busy || status === 'offline' || (!availableCamel(card.id) && returnKind(card.id) !== 'camel')}
+                      aria-label={`Exchange ${cardLabel(card.kind)} ${card.id} for a camel`}
+                      aria-pressed={returnKind(card.id) === 'camel'}
+                      onclick={() => loadCamelExchange(card.id)}
+                    >
+                      <span aria-hidden="true">↑</span>
+                      <img src={componentImage('camel')} alt="" />
+                    </button>
+                    <button
+                      class="exchange-arrow card-return"
+                      class:loaded={returnKind(card.id) === 'card'}
+                      class:awaiting={activeExchangeTarget === card.id}
+                      type="button"
+                      disabled={busy || status === 'offline' || (lobby.round.hands[uid]?.length ?? 0) === 0}
+                      aria-label={`Choose a hand card to exchange for ${cardLabel(card.kind)} ${card.id}`}
+                      aria-pressed={returnKind(card.id) === 'card' || activeExchangeTarget === card.id}
+                      ondragover={(event) => allowExchangeDrop(event, card.id)}
+                      ondrop={(event) => dropHandOnExchange(event, card.id)}
+                      onclick={() => chooseCardExchange(card.id)}
+                    >
+                      <span aria-hidden="true">↑</span>
+                      <img src={componentImage('card-back')} alt="" />
+                    </button>
+                  </div>
+                {/if}
+              </div>
             {/each}
           </div>
         </section>
@@ -679,31 +792,24 @@
           <h2 id="hand-heading">Your hand</h2>
           <div class="cards hand">
           {#each lobby.round.hands[uid] ?? [] as card}
-            {#if exchangeMode}
+            {#if lobby.round.activeUid === uid}
               <button
-                class="card-action return-card"
-                class:selected={selectedReturn.includes(card.id)}
+                class="card-action hand-card"
+                class:selected={selectedHand.includes(card.id) || exchangeReturnIds().includes(card.id)}
+                class:dragging={draggedHandCardId === card.id}
                 type="button"
                 disabled={status === 'offline'}
-                aria-label={`Return ${cardLabel(card.kind)} ${card.id}`}
-                aria-pressed={selectedReturn.includes(card.id)}
-                aria-describedby="exchange-guidance"
+                draggable="true"
+                aria-label={exchangeReturnIds().includes(card.id)
+                  ? `${cardLabel(card.kind)} ${card.id} loaded for exchange`
+                  : activeExchangeTarget
+                    ? `Use ${cardLabel(card.kind)} ${card.id} for exchange`
+                    : `${selectedHand.includes(card.id) ? 'Deselect' : 'Select'} ${cardLabel(card.kind)} ${card.id}`}
+                aria-pressed={selectedHand.includes(card.id) || exchangeReturnIds().includes(card.id)}
                 data-card-id={card.id}
-                onclick={() => (selectedReturn = toggleSelection(selectedReturn, card.id))}
-              >
-                <PieceArt kind={card.kind} label={cardLabel(card.kind)} detail={card.id} />
-              </button>
-            {:else if saleMode}
-              <button
-                class="card-action sale-card"
-                class:selected={selectedSale.includes(card.id)}
-                type="button"
-                disabled={status === 'offline' || Boolean(saleKind && saleKind !== card.kind)}
-                aria-label={`Select ${cardLabel(card.kind)} ${card.id} for sale`}
-                aria-pressed={selectedSale.includes(card.id)}
-                aria-describedby="sale-guidance"
-                data-card-id={card.id}
-                onclick={() => toggleSale(card)}
+                ondragstart={(event) => beginHandDrag(event, card.id)}
+                ondragend={() => (draggedHandCardId = null)}
+                onclick={() => chooseHandCard(card)}
               >
                 <PieceArt kind={card.kind} label={cardLabel(card.kind)} detail={card.id} />
               </button>
@@ -718,35 +824,23 @@
             <img src={componentImage('camel')} alt="" />
             Your herd: <strong>{lobby.round.herds[uid]?.length ?? 0} camels</strong>
           </p>
-          {#if exchangeMode && (lobby.round.herds[uid]?.length ?? 0) > 0}
-            <div class="herd-returns">
-              {#each lobby.round.herds[uid] ?? [] as camel, index}
-                <button
-                  class="secondary"
-                  class:selected={selectedReturn.includes(camel.id)}
-                  type="button"
-                  disabled={status === 'offline'}
-                  aria-pressed={selectedReturn.includes(camel.id)}
-                  aria-describedby="exchange-guidance"
-                  onclick={() => (selectedReturn = toggleSelection(selectedReturn, camel.id))}
-                >
-                  <img src={componentImage('camel')} alt="" />
-                  {selectedReturn.includes(camel.id) ? 'Keep' : 'Return'} camel {index + 1}
-                </button>
-              {/each}
-            </div>
-          {/if}
         </section>
         <section class="token-area" aria-label="Token supplies">
           <h2>Token supplies</h2>
           <div class="tokens">
             {#each goods as kind}
-              <article class={`token ${kind}`}>
+              <button
+                class={`token ${kind}`}
+                type="button"
+                disabled={!canSellTo(kind)}
+                aria-label={saleActionLabel(kind)}
+                onclick={() => sellToStack(kind)}
+              >
                 <img src={componentImage(kind)} alt="" />
                 <strong>{cardLabel(kind)}</strong>
                 <span>{lobby.round.goodsTokens[kind].length} left</span>
                 <span>Next {lobby.round.goodsTokens[kind][0]?.value ?? '—'}</span>
-              </article>
+              </button>
             {/each}
           </div>
           <p>
@@ -762,24 +856,6 @@
       </section>
     {/if}
 
-    {#if repository}
-      <div class="connection-actions">
-        {#if status === 'offline'}
-          <button class="secondary" type="button" onclick={reconnect}>Reconnect</button>
-        {:else}
-          <button
-            class="secondary"
-            type="button"
-            aria-describedby="offline-help"
-            title="Pause Firestore updates and inspect the cached game"
-            onclick={goOffline}>Work offline</button
-          >
-          <span class="visually-hidden" id="offline-help">
-            Pause Firestore updates and show a read-only cached view until reconnecting.
-          </span>
-        {/if}
-      </div>
-    {/if}
     <p role={status === 'incompatible' ? 'alert' : 'status'} data-status={status}>{statusText}</p>
     {#if lobby.diagnostics.length > 0}
       <details class="diagnostics">
@@ -791,7 +867,7 @@
         </ul>
       </details>
     {/if}
-    <p class="build" data-testid="build-marker">Build {import.meta.env.VITE_GIT_HASH ?? 'local'}</p>
+    <p class="build" data-testid="build-marker">Build {buildHash}</p>
   </section>
 </main>
 
@@ -950,9 +1026,8 @@
   }
   [role='status'] { margin: 0; font-weight: 700; }
   [data-status='synced'] { color: #236142; }
-  [data-status='offline'], [data-status='syncing'] { color: #725217; }
+  [data-status='syncing'] { color: #725217; }
   [data-status='conflict'], [data-status='incompatible'], [data-status='error'] { color: #a3212a; }
-  .connection-actions { margin: 1rem 0 0.5rem; }
   .diagnostics {
     max-width: 36rem;
     margin: 0.5rem auto;
@@ -985,17 +1060,17 @@
     font-size: 0.875rem;
   }
   .table h2 { margin: 1rem 0 0.5rem; font: 700 1.8rem 'Cormorant Garamond', serif; }
-  .take-camels { margin: 0 0 0.65rem; }
-  .turn-actions, .herd-returns {
+  .interaction-tray {
     display: flex;
-    flex-wrap: wrap;
+    align-items: center;
     gap: 0.5rem;
     margin-bottom: 0.65rem;
   }
-  .action-guidance {
-    margin: -0.15rem 0 0.8rem;
-    padding: 0.65rem 0.8rem;
-    border-left: 4px solid #a23e2a;
+  .interaction-tray p {
+    flex: 1;
+    margin: 0;
+    padding: 0.45rem 0.65rem;
+    border-left: 3px solid #a23e2a;
     background: #f6e5c7;
     color: #274d47;
   }
@@ -1023,6 +1098,53 @@
     transform: translateY(-2px);
     box-shadow: 0 0.4rem 0.8rem rgb(49 95 88 / 18%);
   }
+  .market-slot {
+    display: grid;
+    min-width: 0;
+    gap: 0.2rem;
+  }
+  .exchange-arrows {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.2rem;
+  }
+  .exchange-arrow {
+    display: flex;
+    min-width: 0;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    gap: 0.08rem;
+    padding: 0.15rem;
+    border: 2px solid #b7aa8d;
+    border-radius: 0.45rem;
+    background: #f2e8d3;
+    color: #315f58;
+  }
+  .exchange-arrow img {
+    width: 1.65rem;
+    height: 1.65rem;
+    border-radius: 0.25rem;
+    object-fit: cover;
+  }
+  .exchange-arrow span {
+    font-size: 1.15rem;
+    line-height: 1;
+  }
+  .exchange-arrow.loaded,
+  .exchange-arrow.awaiting {
+    border-color: #d38b21;
+    background: #fff0ce;
+    box-shadow: inset 0 0 0 2px #d38b21;
+  }
+  .market-slot.loaded > .card-action,
+  .market-slot.awaiting > .card-action {
+    outline: 3px solid #d38b21;
+    outline-offset: -3px;
+  }
+  .hand-card.dragging {
+    opacity: 0.55;
+  }
   .cards .selected, button.selected { outline: 4px solid #d38b21; outline-offset: -4px; }
   .cards article.camel { border-color: #a23e2a; background: #f7d69f; }
   :global(.cards small) { color: #66746e; font-size: 0.7rem; }
@@ -1045,9 +1167,12 @@
     display: grid;
     gap: 0.1rem;
     min-width: 0;
+    min-height: 44px;
     padding: 0.45rem 0.25rem;
+    border: 0;
     border-radius: 0.55rem;
     color: white;
+    cursor: pointer;
     text-align: center;
   }
   .token span { font-size: 0.72rem; }
@@ -1333,32 +1458,24 @@
     font-size: clamp(1.05rem, 3vmin, 1.55rem);
     line-height: 1;
   }
-  .turn-actions,
-  .herd-returns {
-    flex-wrap: nowrap;
+  .interaction-tray {
+    min-height: 44px;
     gap: 0.3rem;
     margin: 0 0 0.3rem;
   }
-  .turn-actions button {
+  .interaction-tray p {
     min-width: 0;
+    overflow: hidden;
+    padding: 0.25rem 0.4rem;
+    font-size: clamp(0.62rem, 1.4vmin, 0.78rem);
+    line-height: 1.1;
+    text-overflow: ellipsis;
+  }
+  .interaction-tray button {
+    min-width: 44px;
     padding: 0.35rem 0.65rem;
     font-size: clamp(0.7rem, 1.6vmin, 0.9rem);
     white-space: nowrap;
-  }
-  .turn-actions button:last-child {
-    flex: 1;
-  }
-  .action-guidance {
-    min-height: 0;
-    margin: 0 0 0.3rem;
-    padding: 0.3rem 0.45rem;
-    font-size: clamp(0.65rem, 1.45vmin, 0.8rem);
-    line-height: 1.15;
-  }
-  .take-camels {
-    align-self: flex-start;
-    margin: 0 0 0.3rem;
-    padding: 0.35rem 0.7rem;
   }
   .cards {
     min-width: 0;
@@ -1380,6 +1497,10 @@
     border-radius: 0.55rem;
     background: #183a37;
     color: white;
+  }
+  .market-slot > article,
+  .market-slot > .card-action {
+    height: max(44px, calc(var(--card-height) - 2.75rem));
   }
   .cards article.camel {
     background: #a23e2a;
@@ -1432,24 +1553,11 @@
     margin: 0;
     font-size: 0.8rem;
   }
-  .herd-total img,
-  .herd-returns img {
+  .herd-total img {
     width: 2rem;
     height: 2rem;
     border-radius: 50%;
     object-fit: cover;
-  }
-  .herd-returns {
-    overflow: hidden;
-  }
-  .herd-returns button {
-    min-width: 44px;
-    flex: 1;
-    padding: 0.2rem;
-    overflow: hidden;
-    font-size: 0.68rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .token-area {
     display: grid;
@@ -1497,14 +1605,6 @@
   .token-area > p {
     margin: 0.25rem 0 0;
     font-size: 0.7rem;
-  }
-  .game-shell > .connection-actions,
-  .lobby-shell > .connection-actions,
-  .score-shell > .connection-actions {
-    position: absolute;
-    bottom: 0.35rem;
-    left: 0.7rem;
-    margin: 0;
   }
   .compact > [role='status'] {
     position: absolute;
@@ -1673,6 +1773,9 @@
     .cards {
       gap: 0.15rem;
     }
+    .cards.market {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
     .cards article,
     .cards .card-action {
       min-height: 44px;
@@ -1714,6 +1817,21 @@
     .score-components {
       align-items: flex-start;
       flex-direction: column;
+    }
+  }
+
+  @media (min-width: 601px) and (max-width: 900px) and (min-height: 600px) {
+    .table {
+      grid-template:
+        'meta seals' auto
+        'market market' auto
+        'opponent opponent' auto
+        'hand hand' auto
+        'tokens tokens' auto /
+        minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .cards.market {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
     }
   }
 
@@ -1779,7 +1897,14 @@
     }
     .table {
       --card-height: clamp(4.2rem, 20vh, 4.8rem);
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
       gap: 0.2rem 0.4rem;
+    }
+    .cards.market {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+    .cards.hand {
+      gap: 0;
     }
     .seal-track {
       position: absolute;
@@ -1796,17 +1921,12 @@
     .table h2 {
       font-size: 1rem;
     }
-    .turn-actions {
-      position: absolute;
-      z-index: 2;
-      top: 0.2rem;
-      left: 50%;
-      max-width: calc(42% - 0.8rem);
-      transform: translateX(-50%);
+    .interaction-tray {
+      min-height: 40px;
     }
-    .action-guidance {
-      max-height: 2.1rem;
-      overflow: hidden;
+    .interaction-tray button {
+      min-height: 44px;
+      padding: 0.2rem 0.45rem;
     }
     .token {
       min-height: 3rem;

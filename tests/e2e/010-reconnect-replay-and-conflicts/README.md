@@ -1,14 +1,14 @@
 # Reconnect, replay, and conflicts
 
-Belen replays a cached game after disconnection; concurrent, duplicate, and incompatible events remain visible but harmless.
+Belen replays a cached game after a browser-network interruption; concurrent, duplicate, and incompatible events remain visible but harmless.
 
-## The disconnected trader keeps a stable cached projection
+## A trader with an interrupted browser network keeps a stable cached projection
 
-![The disconnected trader keeps a stable cached projection](./screenshots/000-offline-cache-desktop.png)
+![A trader with an interrupted browser network keeps a stable cached projection](./screenshots/000-offline-cache-desktop.png)
 
 **Verifications:**
 
-- [x] Belen is explicitly offline while Asha continues the canonical game
+- [x] Belen remains on the cached turn while Asha continues the canonical game
 
 ## Reconnect and reload replay the same canonical state
 

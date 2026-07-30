@@ -71,7 +71,7 @@ test('a production-size round scores and resets for its loser', async ({ browser
       {
         spec: 'The market and all six token supplies are reset',
         check: async () => {
-          await expect(page.locator('.market').locator('article, button')).toHaveCount(5);
+          await expect(page.locator('.market .market-slot')).toHaveCount(5);
           await expect(page.locator('.token')).toHaveCount(6);
           await expect(page.locator('.token.diamond')).toContainText('5 left');
         }

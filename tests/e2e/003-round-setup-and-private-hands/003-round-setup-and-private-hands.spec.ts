@@ -32,21 +32,21 @@ test('ready traders receive a deterministic private deal', async ({ browser, pag
       {
         spec: 'Both players see the same five-card market',
         check: async () => {
-          await expect(page.locator('.market').locator('article, button')).toHaveCount(5);
-          await expect(rival.locator('.market').locator('article, button')).toHaveCount(5);
+          await expect(page.locator('.market .market-slot')).toHaveCount(5);
+          await expect(rival.locator('.market .market-slot')).toHaveCount(5);
           await expect(page.locator('.market .piece-image')).toHaveCount(5);
           const handCount = await page.locator('.hand [data-card-id]').count();
           await expect(page.locator('.hand .piece-image')).toHaveCount(handCount);
           await expect(page.locator('.token-area img')).toHaveCount(6);
-          expect(await page.locator('.market').locator('article, button').allTextContents()).toEqual(
-            await rival.locator('.market').locator('article, button').allTextContents()
+          expect(await page.locator('.market .market-slot > :first-child').allTextContents()).toEqual(
+            await rival.locator('.market .market-slot > :first-child').allTextContents()
           );
         }
       },
       {
         spec: 'The local hand is exact while the opponent is represented by a count',
         check: async () => {
-          await expect(page.locator('.hand article')).toHaveCount(4);
+          await expect(page.locator('.hand [data-card-id]')).toHaveCount(4);
           await expect(page.locator('.opponent')).toContainText('Belen');
           await expect(page.getByText('Herd hidden')).toBeVisible();
         }

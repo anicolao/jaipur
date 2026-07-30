@@ -52,7 +52,7 @@ test('offline replay converges and malformed stream entries stay deterministic',
   const steps = new TestStepHelper(page, testInfo);
   steps.setMetadata(
     'Reconnect, replay, and conflicts',
-    'Belen replays a cached game after disconnection; concurrent, duplicate, and incompatible events remain visible but harmless.'
+    'Belen replays a cached game after a browser-network interruption; concurrent, duplicate, and incompatible events remain visible but harmless.'
   );
   const { gameId, rivalContext, rival } = await openRound(
     browser,
@@ -61,27 +61,25 @@ test('offline replay converges and malformed stream entries stay deterministic',
     'fixed-round-010'
   );
 
-  await rival.getByRole('button', { name: 'Work offline' }).click();
-  await expect(rival.getByText('Offline — cached view only')).toBeVisible();
+  await rivalContext.setOffline(true);
   await page.locator('.market button').first().click();
   await expect(page.getByText("Belen's turn")).toBeVisible();
   await expect(rival.getByText("Asha's turn")).toBeVisible();
 
   await steps.step('offline-cache', {
-    description: 'The disconnected trader keeps a stable cached projection',
+    description: 'A trader with an interrupted browser network keeps a stable cached projection',
     verifications: [
       {
-        spec: 'Belen is explicitly offline while Asha continues the canonical game',
+        spec: 'Belen remains on the cached turn while Asha continues the canonical game',
         check: async () => {
-          await expect(rival.getByRole('button', { name: 'Reconnect' })).toBeVisible();
+          await expect(rival.getByText("Asha's turn")).toBeVisible();
           await expect(page.getByText("Belen's turn")).toBeVisible();
         }
       }
     ]
   });
 
-  await rival.getByRole('button', { name: 'Reconnect' }).click();
-  await expect(rival.getByText("Belen's turn")).toBeVisible();
+  await rivalContext.setOffline(false);
   await rival.reload();
   await expect(rival.getByText("Belen's turn")).toBeVisible();
   await expect(rival.getByText('Game synced')).toBeVisible();

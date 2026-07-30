@@ -20,7 +20,10 @@ test('the active trader takes every camel as one action', async ({ browser, page
     (await page.locator('.herd-total').textContent())?.match(/\d+/)?.[0] ?? '0'
   );
   const deckBefore = Number(await page.getByText('Deck').locator('..').locator('strong').textContent());
-  await page.getByRole('button', { name: new RegExp(`Take all ${camelCount} camels`) }).click();
+  await page
+    .getByRole('button', { name: new RegExp(`Take all ${camelCount} camels`) })
+    .first()
+    .click();
 
   await steps.step('camels-taken', {
     description: 'Every camel joins Asha’s herd',
@@ -33,7 +36,7 @@ test('the active trader takes every camel as one action', async ({ browser, page
       {
         spec: 'The market returns to five cards and the deck pays every replacement',
         check: async () => {
-          await expect(page.locator('.market').locator('article, button')).toHaveCount(5);
+          await expect(page.locator('.market .market-slot')).toHaveCount(5);
           await expect(page.getByText('Deck').locator('..')).toContainText(
             String(deckBefore - camelCount)
           );
