@@ -54,9 +54,20 @@ nix develop --command bun install
 nix develop --command bun run verify:change
 ```
 
-The Firebase project, web app, production configuration, and GitHub repository
-settings still need to be created. Never commit service-account credentials,
-private keys, Firebase CLI tokens, or production data.
+## Firebase
+
+- Project: `jaipur-20260730`
+- Web app: `Jaipur Web`
+- Authentication: anonymous sign-in
+- Database: Cloud Firestore in `nam5`
+- Production rules: authenticated, own-UID, append-only event writes; all other
+  paths denied
+
+Firebase browser configuration is public configuration, not a secret.
+Authentication and Firestore Security Rules provide attribution and immutable
+history, not game-action validation or cheating prevention. Never commit
+service-account credentials, private keys, Firebase CLI tokens, or production
+data.
 
 ## License
 
