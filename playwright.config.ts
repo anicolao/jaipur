@@ -35,6 +35,16 @@ export default defineConfig({
     {
       name: 'desktop',
       use: { browserName: 'chromium', viewport: { width: 1280, height: 1000 } }
+    },
+    {
+      name: 'mobile-landscape',
+      testMatch: '**/011-responsive-accessible-complete-game/*.spec.ts',
+      use: { browserName: 'chromium', viewport: { width: 852, height: 393 } }
+    },
+    {
+      name: 'tablet',
+      testMatch: '**/011-responsive-accessible-complete-game/*.spec.ts',
+      use: { browserName: 'chromium', viewport: { width: 820, height: 1180 } }
     }
   ],
   webServer: {

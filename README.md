@@ -65,6 +65,21 @@ two-browser Playwright scenario against the Firebase emulators, the production
 build, and whitespace checks. Scenario walkthroughs and their zero-pixel
 screenshots live under `tests/e2e/`.
 
+## Accessibility and installation
+
+Every game action uses native keyboard-operable controls with visible focus,
+pressed states, text instructions, and touch targets of at least 44 CSS pixels.
+Turn and connection changes are announced to assistive technology. The layout
+accounts for device safe areas, honours reduced-motion preferences, and is
+continuously checked for clipping and overlapping controls at phone portrait,
+phone landscape, tablet, and desktop sizes.
+
+The static site includes a web app manifest and original scalable icon, so
+supporting browsers can install it from the production URL. The game remains a
+networked experience; installation does not make Firebase multiplayer
+available without a connection, though an opened game can be viewed from its
+local replay cache while disconnected.
+
 ## Firebase
 
 - Project: `jaipur-20260730`

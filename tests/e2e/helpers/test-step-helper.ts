@@ -47,6 +47,32 @@ export class TestStepHelper {
           throw new Error(`${element.tagName} is outside the viewport`);
         }
       }
+
+      const controls = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-e2e-layout] button:not([disabled]), [data-e2e-layout] input:not([disabled])'
+        )
+      ).filter((element) => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return (
+          style.visibility !== 'hidden' &&
+          style.display !== 'none' &&
+          rect.width > 0 &&
+          rect.height > 0
+        );
+      });
+      for (let left = 0; left < controls.length; left += 1) {
+        const first = controls[left].getBoundingClientRect();
+        for (let right = left + 1; right < controls.length; right += 1) {
+          const second = controls[right].getBoundingClientRect();
+          const overlapWidth = Math.min(first.right, second.right) - Math.max(first.left, second.left);
+          const overlapHeight = Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top);
+          if (overlapWidth > 1 && overlapHeight > 1) {
+            throw new Error(`${controls[left].tagName} overlaps ${controls[right].tagName}`);
+          }
+        }
+      }
     });
 
     const index = String(this.count++).padStart(3, '0');
@@ -61,7 +87,7 @@ export class TestStepHelper {
   }
 
   generateDocs() {
-    if (this.testInfo.project.name !== 'desktop') return;
+    if (this.testInfo.project.name !== 'desktop' || process.platform === 'linux') return;
     let content = `# ${this.title}\n\n${this.description}\n\n`;
     for (const step of this.steps) {
       content += `## ${step.title}\n\n![${step.title}](${step.image})\n\n`;

@@ -330,7 +330,8 @@
   <title>Jaipur — Live card play</title>
 </svelte:head>
 
-<main data-e2e-layout>
+<a class="skip-link" href="#game-content">Skip to game</a>
+<main id="game-content" data-e2e-layout>
   <section class="hero" class:compact={!shellOnly} aria-labelledby="title">
     <p class="eyebrow">A market for two</p>
     <h1 id="title">{shellOnly ? 'The bazaar is almost ready.' : 'Enter the bazaar.'}</h1>
@@ -472,7 +473,7 @@
       </section>
     {:else}
       <section class="table" aria-label="Jaipur market">
-        <header>
+        <header aria-live="polite" aria-atomic="true">
           <div>
             <span>Round {lobby.round.number}</span>
             <strong>{lobby.players.find((player) => player.uid === lobby.round?.activeUid)?.displayName}'s turn</strong>
@@ -521,6 +522,18 @@
               </button>
             {/if}
           </div>
+          {#if exchangeMode}
+            <p class="action-guidance" id="exchange-guidance">
+              Select at least two market goods, then return the same number of hand goods or
+              camels. Selected cards are marked with a gold outline and announced as selected.
+            </p>
+          {:else if saleMode}
+            <p class="action-guidance" id="sale-guidance">
+              Select one goods family from your hand. Diamonds, gold, and silver require at
+              least two cards. Selected cards are marked with a gold outline and announced as
+              selected.
+            </p>
+          {/if}
         {/if}
         {#if !exchangeMode && !saleMode && lobby.round.activeUid === uid && lobby.round.market.some((card) => card.kind === 'camel')}
           <button class="take-camels" type="button" disabled={busy} onclick={takeCamels}>
@@ -537,6 +550,7 @@
                 disabled={busy}
                 aria-label={`${exchangeMode ? 'Select' : 'Take'} ${cardLabel(card.kind)} ${card.id}`}
                 aria-pressed={exchangeMode ? selectedMarket.includes(card.id) : undefined}
+                aria-describedby={exchangeMode ? 'exchange-guidance' : undefined}
                 data-card-id={card.id}
                 onclick={() =>
                   exchangeMode
@@ -574,6 +588,7 @@
                 type="button"
                 aria-label={`Return ${cardLabel(card.kind)} ${card.id}`}
                 aria-pressed={selectedReturn.includes(card.id)}
+                aria-describedby="exchange-guidance"
                 data-card-id={card.id}
                 onclick={() => (selectedReturn = toggleSelection(selectedReturn, card.id))}
               >
@@ -588,6 +603,7 @@
                 disabled={Boolean(saleKind && saleKind !== card.kind)}
                 aria-label={`Select ${cardLabel(card.kind)} ${card.id} for sale`}
                 aria-pressed={selectedSale.includes(card.id)}
+                aria-describedby="sale-guidance"
                 data-card-id={card.id}
                 onclick={() => toggleSale(card)}
               >
@@ -611,6 +627,7 @@
                 class:selected={selectedReturn.includes(camel.id)}
                 type="button"
                 aria-pressed={selectedReturn.includes(camel.id)}
+                aria-describedby="exchange-guidance"
                 onclick={() => (selectedReturn = toggleSelection(selectedReturn, camel.id))}
               >
                 {selectedReturn.includes(camel.id) ? 'Keep' : 'Return'} camel {index + 1}
@@ -674,11 +691,28 @@
     font-family: 'Atkinson Hyperlegible', sans-serif;
   }
   :global(body) { margin: 0; }
+  .skip-link {
+    position: fixed;
+    z-index: 10;
+    top: 0.5rem;
+    left: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    background: #183a37;
+    color: white;
+    font-weight: 700;
+    transform: translateY(-150%);
+  }
+  .skip-link:focus { transform: translateY(0); }
   main {
     min-height: 100vh;
     display: grid;
     place-items: center;
-    padding: 2rem;
+    padding:
+      max(2rem, env(safe-area-inset-top))
+      max(2rem, env(safe-area-inset-right))
+      max(2rem, env(safe-area-inset-bottom))
+      max(2rem, env(safe-area-inset-left));
     background:
       radial-gradient(circle at 50% 18%, rgb(255 255 255 / 75%), transparent 31rem),
       linear-gradient(145deg, #f8efd9, #e7c98d);
@@ -740,6 +774,7 @@
   label { display: grid; gap: 0.35rem; font-weight: 700; }
   input {
     width: 100%;
+    min-height: 44px;
     padding: 0.75rem;
     border: 1px solid #778b80;
     border-radius: 0.65rem;
@@ -748,6 +783,8 @@
     font: inherit;
   }
   button {
+    min-width: 44px;
+    min-height: 44px;
     padding: 0.75rem 1.1rem;
     border: 0;
     border-radius: 99rem;
@@ -758,6 +795,10 @@
   }
   button.secondary { background: #315f58; }
   button:disabled { cursor: not-allowed; opacity: 0.45; }
+  :global(:focus-visible) {
+    outline: 4px solid #145ca8;
+    outline-offset: 3px;
+  }
   .lobby { margin: 0 auto 1.5rem; }
   .lobby button + button { margin-left: 0.5rem; }
   .room-code { display: grid; margin-bottom: 1rem; }
@@ -829,6 +870,13 @@
     gap: 0.5rem;
     margin-bottom: 0.65rem;
   }
+  .action-guidance {
+    margin: -0.15rem 0 0.8rem;
+    padding: 0.65rem 0.8rem;
+    border-left: 4px solid #a23e2a;
+    background: #f6e5c7;
+    color: #274d47;
+  }
   .cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.55rem; }
   .cards article, .cards .card-action {
     min-height: 7.5rem;
@@ -844,7 +892,15 @@
     text-align: left;
   }
   .cards .card-action { cursor: pointer; }
-  .cards .card-action:hover { transform: translateY(-2px); box-shadow: 0 0.4rem 0.8rem rgb(49 95 88 / 18%); }
+  .cards .card-action {
+    transition:
+      transform 120ms ease,
+      box-shadow 120ms ease;
+  }
+  .cards .card-action:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.4rem 0.8rem rgb(49 95 88 / 18%);
+  }
   .cards .selected, button.selected { outline: 4px solid #d38b21; outline-offset: -4px; }
   .cards article.camel { border-color: #a23e2a; background: #f7d69f; }
   .cards small { color: #66746e; font-size: 0.7rem; }
@@ -903,8 +959,33 @@
     background: #e9dcc1;
   }
   .match-history h3, .match-history p { margin: 0.25rem; }
+  @media (prefers-reduced-motion: reduce) {
+    :global(*) {
+      scroll-behavior: auto !important;
+      transition-duration: 0s !important;
+      animation-duration: 0s !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+  @media (forced-colors: active) {
+    .cards .selected,
+    button.selected {
+      outline: 4px solid Highlight;
+    }
+    button,
+    .cards article,
+    .token {
+      border: 2px solid ButtonText;
+    }
+  }
   @media (max-width: 480px) {
-    main { padding: 1rem; }
+    main {
+      padding:
+        max(1rem, env(safe-area-inset-top))
+        max(1rem, env(safe-area-inset-right))
+        max(1rem, env(safe-area-inset-bottom))
+        max(1rem, env(safe-area-inset-left));
+    }
     .hero { padding: 2rem 1.2rem; border-radius: 1.4rem; }
     li { grid-template-columns: auto 1fr; }
     li > :last-child { grid-column: 2; }

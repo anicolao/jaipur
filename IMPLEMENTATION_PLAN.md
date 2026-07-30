@@ -8,9 +8,11 @@ model: each gameplay commit begins at a real browser interaction, crosses the
 real client, deterministic reducer, Firebase emulator, and rendering layers,
 and ends in a user-visible result verified by Playwright.
 
-This initial milestone is intentionally documentation-only. No technical
-scaffolding should be added until the first tracer bullet can establish the
-whole development and deployment contract coherently.
+This plan began as a documentation-only milestone so the first tracer bullet
+could establish the whole development and deployment contract coherently. The
+eleven numbered vertical slices now form the repository's implementation
+history; the sequence remains the architectural and acceptance-test reference
+for future changes.
 
 ## Non-negotiable commit contract
 
