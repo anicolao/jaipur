@@ -221,6 +221,39 @@ export function reduceGame(events: GameEvent[]): GameState {
       round.activeUid =
         lobby.players.find(({ uid }) => uid !== event.actorUid)?.uid ?? round.activeUid;
       round.turnNumber += 1;
+      continue;
+    }
+
+    if (event.type === 'cards/exchanged') {
+      const takenIds = event.payload.takenCardIds;
+      const returnedIds = event.payload.returnedCardIds;
+      const hand = round.hands[event.actorUid];
+      const herd = round.herds[event.actorUid];
+      if (
+        !Array.isArray(takenIds) ||
+        !Array.isArray(returnedIds) ||
+        !hand ||
+        !herd ||
+        event.actorUid !== round.activeUid ||
+        !isLegalExchange(round, event.actorUid, takenIds, returnedIds)
+      ) {
+        lobby.diagnostics.push(`${event.id}: invalid exchange`);
+        continue;
+      }
+      const taken = round.market.filter(({ id }) => takenIds.includes(id));
+      const returned = [...hand, ...herd].filter(({ id }) => returnedIds.includes(id));
+      round.market = [
+        ...round.market.filter(({ id }) => !takenIds.includes(id)),
+        ...returned
+      ];
+      round.hands[event.actorUid] = [
+        ...hand.filter(({ id }) => !returnedIds.includes(id)),
+        ...taken
+      ];
+      round.herds[event.actorUid] = herd.filter(({ id }) => !returnedIds.includes(id));
+      round.activeUid =
+        lobby.players.find(({ uid }) => uid !== event.actorUid)?.uid ?? round.activeUid;
+      round.turnNumber += 1;
     }
   }
   return { ...lobby, round };
@@ -229,6 +262,41 @@ export function reduceGame(events: GameEvent[]): GameState {
 export function legalSingleGoods(round: RoundState, uid: string): Card[] {
   if (round.activeUid !== uid || round.hands[uid]?.length >= 7) return [];
   return round.market.filter(({ kind }) => kind !== 'camel');
+}
+
+export function isLegalExchange(
+  round: RoundState,
+  uid: string,
+  takenIds: unknown[],
+  returnedIds: unknown[]
+): boolean {
+  if (
+    round.activeUid !== uid ||
+    takenIds.length < 2 ||
+    takenIds.length !== returnedIds.length ||
+    new Set(takenIds).size !== takenIds.length ||
+    new Set(returnedIds).size !== returnedIds.length ||
+    !takenIds.every((id): id is string => typeof id === 'string') ||
+    !returnedIds.every((id): id is string => typeof id === 'string')
+  ) {
+    return false;
+  }
+  const taken = round.market.filter(({ id }) => takenIds.includes(id));
+  const availableReturns = [...(round.hands[uid] ?? []), ...(round.herds[uid] ?? [])];
+  const returned = availableReturns.filter(({ id }) => returnedIds.includes(id));
+  if (
+    taken.length !== takenIds.length ||
+    returned.length !== returnedIds.length ||
+    taken.some(({ kind }) => kind === 'camel')
+  ) {
+    return false;
+  }
+  const takenGoods = new Set(taken.map(({ kind }) => kind));
+  if (returned.some(({ kind }) => kind !== 'camel' && takenGoods.has(kind))) return false;
+  const returnedFromHand = returned.filter((card) =>
+    round.hands[uid].some(({ id }) => id === card.id)
+  ).length;
+  return round.hands[uid].length - returnedFromHand + taken.length <= 7;
 }
 
 export function cardCount(round: RoundState): number {

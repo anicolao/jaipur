@@ -7,7 +7,8 @@ export type GameEventType =
   | 'player/ready'
   | 'round/started'
   | 'cards/taken-one'
-  | 'cards/taken-camels';
+  | 'cards/taken-camels'
+  | 'cards/exchanged';
 
 export interface GameEvent {
   id: string;

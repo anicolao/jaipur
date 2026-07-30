@@ -6,7 +6,7 @@
   import { onMount } from 'svelte';
   import { initializeFirebase } from '$lib/firebase';
   import { createGameRepository, type GameRepository } from '$lib/game-repository';
-  import { reduceGame, type GameState } from '$lib/jaipur-rules';
+  import { isLegalExchange, reduceGame, type GameState } from '$lib/jaipur-rules';
 
   let status = $state<'connecting' | 'synced' | 'error'>('connecting');
   let statusText = $state('Connecting to Firebase…');
@@ -17,6 +17,9 @@
   let repository = $state<GameRepository>();
   let busy = $state(false);
   let shellOnly = $state(true);
+  let exchangeMode = $state(false);
+  let selectedMarket = $state<string[]>([]);
+  let selectedReturn = $state<string[]>([]);
 
   onMount(async () => {
     try {
@@ -141,6 +144,48 @@
     }
   }
 
+  function toggleSelection(list: string[], id: string): string[] {
+    return list.includes(id) ? list.filter((value) => value !== id) : [...list, id];
+  }
+
+  function cancelExchange() {
+    exchangeMode = false;
+    selectedMarket = [];
+    selectedReturn = [];
+  }
+
+  function projectedHandSize() {
+    if (!lobby.round) return 0;
+    const handReturns = selectedReturn.filter((id) =>
+      lobby.round?.hands[uid]?.some((card) => card.id === id)
+    ).length;
+    return (lobby.round.hands[uid]?.length ?? 0) - handReturns + selectedMarket.length;
+  }
+
+  async function confirmExchange() {
+    if (
+      !repository ||
+      !lobby.round ||
+      !isLegalExchange(lobby.round, uid, selectedMarket, selectedReturn)
+    ) {
+      return;
+    }
+    busy = true;
+    try {
+      await repository.append('cards/exchanged', {
+        takenCardIds: selectedMarket,
+        returnedCardIds: selectedReturn,
+        roundNumber: lobby.round.number,
+        turnNumber: lobby.round.turnNumber
+      });
+      cancelExchange();
+    } catch (error) {
+      showError(error);
+    } finally {
+      busy = false;
+    }
+  }
+
   const cardLabel = (kind: string) => kind[0].toUpperCase() + kind.slice(1);
 </script>
 
@@ -227,21 +272,47 @@
           <div><span>Deck</span><strong>{lobby.round.deck.length}</strong></div>
         </header>
         <h2>Market</h2>
-        {#if lobby.round.activeUid === uid && lobby.round.market.some((card) => card.kind === 'camel')}
+        {#if lobby.round.activeUid === uid}
+          <div class="turn-actions">
+            <button
+              class="secondary"
+              type="button"
+              aria-pressed={exchangeMode}
+              onclick={() => (exchangeMode ? cancelExchange() : (exchangeMode = true))}
+            >
+              {exchangeMode ? 'Cancel exchange' : 'Exchange goods'}
+            </button>
+            {#if exchangeMode}
+              <button
+                type="button"
+                disabled={!isLegalExchange(lobby.round, uid, selectedMarket, selectedReturn) || busy}
+                onclick={confirmExchange}
+              >
+                Confirm {selectedMarket.length} for {selectedReturn.length} · hand {projectedHandSize()} / 7
+              </button>
+            {/if}
+          </div>
+        {/if}
+        {#if !exchangeMode && lobby.round.activeUid === uid && lobby.round.market.some((card) => card.kind === 'camel')}
           <button class="take-camels" type="button" disabled={busy} onclick={takeCamels}>
             Take all {lobby.round.market.filter((card) => card.kind === 'camel').length} camels
           </button>
         {/if}
         <div class="cards market">
           {#each lobby.round.market as card}
-            {#if card.kind !== 'camel' && lobby.round.activeUid === uid && (lobby.round.hands[uid]?.length ?? 0) < 7}
+            {#if card.kind !== 'camel' && lobby.round.activeUid === uid && (exchangeMode || (lobby.round.hands[uid]?.length ?? 0) < 7)}
               <button
                 class="card-action"
+                class:selected={selectedMarket.includes(card.id)}
                 type="button"
                 disabled={busy}
-                aria-label={`Take ${cardLabel(card.kind)}`}
+                aria-label={`${exchangeMode ? 'Select' : 'Take'} ${cardLabel(card.kind)} ${card.id}`}
+                aria-pressed={exchangeMode ? selectedMarket.includes(card.id) : undefined}
                 data-card-id={card.id}
-                onclick={() => takeOne(card.id)}
+                onclick={() =>
+                  exchangeMode
+                    ? (selectedMarket = toggleSelection(selectedMarket, card.id))
+                    : takeOne(card.id)}
               >
                 <span>{cardLabel(card.kind)}</span>
                 <small>{card.id}</small>
@@ -262,13 +333,43 @@
         <h2>Your hand</h2>
         <div class="cards hand">
           {#each lobby.round.hands[uid] ?? [] as card}
-            <article data-card-id={card.id}>
-              <span>{cardLabel(card.kind)}</span>
-              <small>{card.id}</small>
-            </article>
+            {#if exchangeMode}
+              <button
+                class="card-action return-card"
+                class:selected={selectedReturn.includes(card.id)}
+                type="button"
+                aria-label={`Return ${cardLabel(card.kind)} ${card.id}`}
+                aria-pressed={selectedReturn.includes(card.id)}
+                data-card-id={card.id}
+                onclick={() => (selectedReturn = toggleSelection(selectedReturn, card.id))}
+              >
+                <span>{cardLabel(card.kind)}</span>
+                <small>{card.id}</small>
+              </button>
+            {:else}
+              <article data-card-id={card.id}>
+                <span>{cardLabel(card.kind)}</span>
+                <small>{card.id}</small>
+              </article>
+            {/if}
           {/each}
         </div>
         <p>Your herd: <strong>{lobby.round.herds[uid]?.length ?? 0} camels</strong></p>
+        {#if exchangeMode && (lobby.round.herds[uid]?.length ?? 0) > 0}
+          <div class="herd-returns">
+            {#each lobby.round.herds[uid] ?? [] as camel, index}
+              <button
+                class="secondary"
+                class:selected={selectedReturn.includes(camel.id)}
+                type="button"
+                aria-pressed={selectedReturn.includes(camel.id)}
+                onclick={() => (selectedReturn = toggleSelection(selectedReturn, camel.id))}
+              >
+                {selectedReturn.includes(camel.id) ? 'Keep' : 'Return'} camel {index + 1}
+              </button>
+            {/each}
+          </div>
+        {/if}
       </section>
     {/if}
 
@@ -411,6 +512,12 @@
   .table header div { display: grid; }
   .table h2 { margin: 1rem 0 0.5rem; font: 700 1.8rem 'Cormorant Garamond', serif; }
   .take-camels { margin: 0 0 0.65rem; }
+  .turn-actions, .herd-returns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.65rem;
+  }
   .cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.55rem; }
   .cards article, .cards .card-action {
     min-height: 7.5rem;
@@ -427,6 +534,7 @@
   }
   .cards .card-action { cursor: pointer; }
   .cards .card-action:hover { transform: translateY(-2px); box-shadow: 0 0.4rem 0.8rem rgb(49 95 88 / 18%); }
+  .cards .selected, button.selected { outline: 4px solid #d38b21; outline-offset: -4px; }
   .cards article.camel { border-color: #a23e2a; background: #f7d69f; }
   .cards small { color: #66746e; font-size: 0.7rem; }
   .opponent {
