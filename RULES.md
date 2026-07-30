@@ -180,10 +180,10 @@ are tied, compare:
 2. number of goods tokens collected.
 
 The published rulebook gives no further tie-break after equal goods-token
-counts. Before the scoring slice is implemented, the project must record and
-test a single explicit residual-tie policy rather than silently selecting a
-winner. Until that decision is documented, such a replay must stop at a visible
-`unresolved-round-tie` state.
+counts. This implementation awards that residual exact tie to the player who
+did not start the round. The committed starter therefore provides a stable,
+replayable final comparison without inventing hidden randomness, and every
+round still awards exactly one seal.
 
 If neither player has two seals, reset every round component and play again.
 The loser of the previous round starts the new round.

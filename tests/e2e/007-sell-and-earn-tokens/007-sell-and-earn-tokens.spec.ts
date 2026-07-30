@@ -20,7 +20,6 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
     await page.getByRole('button', { name: `Select Spice ${card} for sale` }).click();
   }
   await page.getByRole('button', { name: 'Sell 3 Spice' }).click();
-  await page.locator('.token-area').scrollIntoViewIfNeeded();
 
   await steps.step('large-sale', {
     description: 'A three-card sale awards ordered goods tokens and one hidden bonus',
@@ -45,6 +44,9 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
         check: async () => {
           await expect(rival.locator('.opponent')).toContainText('4 tokens');
           await expect(rival.locator('.opponent')).toContainText('values hidden');
+          await page
+            .locator('.token-area')
+            .evaluate((element) => element.scrollIntoView({ block: 'center' }));
         }
       }
     ]
@@ -53,7 +55,6 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
   await rival.getByRole('button', { name: 'Sell goods' }).click();
   await rival.getByRole('button', { name: 'Select Spice spice-03 for sale' }).click();
   await rival.getByRole('button', { name: 'Sell 1 Spice' }).click();
-  await page.locator('.token-area').scrollIntoViewIfNeeded();
 
   await steps.step('ordinary-sale', {
     description: 'Belen completes a one-card ordinary-goods sale',
@@ -70,6 +71,9 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
         check: async () => {
           await expect(page.locator('.opponent')).toContainText('1 tokens');
           await expect(page.getByText("Asha's turn")).toBeVisible();
+          await page
+            .locator('.token-area')
+            .evaluate((element) => element.scrollIntoView({ block: 'center' }));
         }
       }
     ]

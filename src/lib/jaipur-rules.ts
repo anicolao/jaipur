@@ -18,7 +18,14 @@ export interface RoundState {
   number: number;
   turnNumber: number;
   seed: string;
+  starterUid: string;
   activeUid: string;
+  status: 'active' | 'complete';
+  endReason: 'three-empty-supplies' | 'deck-exhausted' | null;
+  camelBonusUid: string | null;
+  scores: Record<string, ScoreBreakdown> | null;
+  winnerUid: string | null;
+  loserUid: string | null;
   deck: Card[];
   market: Card[];
   hands: Record<string, Card[]>;
@@ -30,8 +37,28 @@ export interface RoundState {
   ownedBonusTokens: Record<string, Token[]>;
 }
 
+export interface ScoreBreakdown {
+  goods: number;
+  bonus: number;
+  camel: number;
+  total: number;
+  goodsTokenCount: number;
+  bonusTokenCount: number;
+}
+
+export interface RoundResolution {
+  camelBonusUid: string | null;
+  scores: Record<string, ScoreBreakdown>;
+  winnerUid: string;
+  loserUid: string;
+  tieBreak: 'score' | 'bonus-tokens' | 'goods-tokens' | 'non-starter';
+}
+
 export interface GameState extends LobbyState {
   round: RoundState | null;
+  rounds: RoundState[];
+  seals: Record<string, number>;
+  winnerUid: string | null;
 }
 
 const CARD_COUNTS: Record<CardKind, number> = {
@@ -146,7 +173,14 @@ export function setupRound(playerUids: string[], seed: string, activeUid: string
     number: 1,
     turnNumber: 1,
     seed,
+    starterUid: activeUid,
     activeUid,
+    status: 'active',
+    endReason: null,
+    camelBonusUid: null,
+    scores: null,
+    winnerUid: null,
+    loserUid: null,
     deck,
     market,
     hands,
@@ -159,33 +193,130 @@ export function setupRound(playerUids: string[], seed: string, activeUid: string
   };
 }
 
+export function roundEndReason(
+  round: RoundState
+): RoundState['endReason'] {
+  if (Object.values(round.goodsTokens).filter((tokens) => tokens.length === 0).length >= 3) {
+    return 'three-empty-supplies';
+  }
+  if (round.market.length < 5) return 'deck-exhausted';
+  return null;
+}
+
+export function resolveRound(round: RoundState, playerUids: string[]): RoundResolution {
+  if (playerUids.length !== 2) throw new Error('Round scoring requires exactly two players');
+  const [firstUid, secondUid] = playerUids;
+  const firstHerd = round.herds[firstUid]?.length ?? 0;
+  const secondHerd = round.herds[secondUid]?.length ?? 0;
+  const camelBonusUid =
+    firstHerd === secondHerd ? null : firstHerd > secondHerd ? firstUid : secondUid;
+  const scores = Object.fromEntries(
+    playerUids.map((uid) => {
+      const goodsTokens = round.ownedGoodsTokens[uid] ?? [];
+      const bonusTokens = round.ownedBonusTokens[uid] ?? [];
+      const goods = goodsTokens.reduce((total, token) => total + token.value, 0);
+      const bonus = bonusTokens.reduce((total, token) => total + token.value, 0);
+      const camel = camelBonusUid === uid ? 5 : 0;
+      return [
+        uid,
+        {
+          goods,
+          bonus,
+          camel,
+          total: goods + bonus + camel,
+          goodsTokenCount: goodsTokens.length,
+          bonusTokenCount: bonusTokens.length
+        }
+      ];
+    })
+  ) as Record<string, ScoreBreakdown>;
+
+  const first = scores[firstUid];
+  const second = scores[secondUid];
+  let winnerUid: string;
+  let tieBreak: RoundResolution['tieBreak'];
+  if (first.total !== second.total) {
+    winnerUid = first.total > second.total ? firstUid : secondUid;
+    tieBreak = 'score';
+  } else if (first.bonusTokenCount !== second.bonusTokenCount) {
+    winnerUid = first.bonusTokenCount > second.bonusTokenCount ? firstUid : secondUid;
+    tieBreak = 'bonus-tokens';
+  } else if (first.goodsTokenCount !== second.goodsTokenCount) {
+    winnerUid = first.goodsTokenCount > second.goodsTokenCount ? firstUid : secondUid;
+    tieBreak = 'goods-tokens';
+  } else {
+    winnerUid = playerUids.find((uid) => uid !== round.starterUid)!;
+    tieBreak = 'non-starter';
+  }
+  return {
+    camelBonusUid,
+    scores,
+    winnerUid,
+    loserUid: playerUids.find((uid) => uid !== winnerUid)!,
+    tieBreak
+  };
+}
+
 export function reduceGame(events: GameEvent[]): GameState {
   const lobby = reduceLobby(events);
+  const playerUids = lobby.players.map(({ uid }) => uid);
+  const seals: Record<string, number> = Object.fromEntries(playerUids.map((uid) => [uid, 0]));
+  const rounds: RoundState[] = [];
   let round: RoundState | null = null;
+  let winnerUid: string | null = null;
+
+  const finishAction = (actorUid: string) => {
+    if (!round) return;
+    round.activeUid = playerUids.find((uid) => uid !== actorUid) ?? round.activeUid;
+    round.turnNumber += 1;
+    const endReason = roundEndReason(round);
+    if (!endReason) return;
+    const resolution = resolveRound(round, playerUids);
+    round.status = 'complete';
+    round.endReason = endReason;
+    round.camelBonusUid = resolution.camelBonusUid;
+    round.scores = resolution.scores;
+    round.winnerUid = resolution.winnerUid;
+    round.loserUid = resolution.loserUid;
+    seals[resolution.winnerUid] += 1;
+    if (seals[resolution.winnerUid] >= 2) winnerUid = resolution.winnerUid;
+  };
+
   for (const event of events) {
     if (event.type === 'round/started') {
-      if (round) continue;
       const seed = event.payload.seed;
       const starterUid = event.payload.starterUid;
+      const expectedStarter = round?.loserUid;
       if (
         event.actorUid !== lobby.hostUid ||
         lobby.players.length !== 2 ||
         !lobby.players.every(({ ready }) => ready) ||
         typeof seed !== 'string' ||
-        typeof starterUid !== 'string'
+        typeof starterUid !== 'string' ||
+        winnerUid ||
+        (round?.status === 'active') ||
+        (round?.status === 'complete' && starterUid !== expectedStarter)
       ) {
         lobby.diagnostics.push(`${event.id}: invalid round start`);
         continue;
       }
       round = setupRound(
-        lobby.players.map(({ uid }) => uid),
+        playerUids,
         seed,
         starterUid
       );
+      round.number = rounds.length + 1;
+      rounds.push(round);
       continue;
     }
 
     if (!round) continue;
+    if (round.status !== 'active') {
+      if (event.type.startsWith('cards/')) {
+        lobby.diagnostics.push(`${event.id}: action after round end`);
+      }
+      continue;
+    }
     if (event.type === 'cards/taken-one') {
       const cardId = event.payload.cardId;
       const hand = round.hands[event.actorUid];
@@ -205,9 +336,7 @@ export function reduceGame(events: GameEvent[]): GameState {
       hand.push(card);
       const replacement = round.deck.shift();
       if (replacement) round.market.splice(marketIndex, 0, replacement);
-      round.activeUid =
-        lobby.players.find(({ uid }) => uid !== event.actorUid)?.uid ?? round.activeUid;
-      round.turnNumber += 1;
+      finishAction(event.actorUid);
       continue;
     }
 
@@ -222,9 +351,7 @@ export function reduceGame(events: GameEvent[]): GameState {
       while (round.market.length < 5 && round.deck.length > 0) {
         round.market.push(round.deck.shift()!);
       }
-      round.activeUid =
-        lobby.players.find(({ uid }) => uid !== event.actorUid)?.uid ?? round.activeUid;
-      round.turnNumber += 1;
+      finishAction(event.actorUid);
       continue;
     }
 
@@ -255,9 +382,7 @@ export function reduceGame(events: GameEvent[]): GameState {
         ...taken
       ];
       round.herds[event.actorUid] = herd.filter(({ id }) => !returnedIds.includes(id));
-      round.activeUid =
-        lobby.players.find(({ uid }) => uid !== event.actorUid)?.uid ?? round.activeUid;
-      round.turnNumber += 1;
+      finishAction(event.actorUid);
       continue;
     }
 
@@ -273,16 +398,16 @@ export function reduceGame(events: GameEvent[]): GameState {
         lobby.diagnostics.push(`${event.id}: invalid sale`);
         continue;
       }
-      round.activeUid =
-        lobby.players.find(({ uid }) => uid !== event.actorUid)?.uid ?? round.activeUid;
-      round.turnNumber += 1;
+      finishAction(event.actorUid);
     }
   }
-  return { ...lobby, round };
+  return { ...lobby, round, rounds, seals, winnerUid };
 }
 
 export function legalSingleGoods(round: RoundState, uid: string): Card[] {
-  if (round.activeUid !== uid || round.hands[uid]?.length >= 7) return [];
+  if (round.status !== 'active' || round.activeUid !== uid || round.hands[uid]?.length >= 7) {
+    return [];
+  }
   return round.market.filter(({ kind }) => kind !== 'camel');
 }
 
@@ -293,6 +418,7 @@ export function isLegalExchange(
   returnedIds: unknown[]
 ): boolean {
   if (
+    round.status !== 'active' ||
     round.activeUid !== uid ||
     takenIds.length < 2 ||
     takenIds.length !== returnedIds.length ||
@@ -332,6 +458,7 @@ export function isLegalSale(
   cardIds: unknown[]
 ): boolean {
   if (
+    round.status !== 'active' ||
     round.activeUid !== uid ||
     cardIds.length === 0 ||
     new Set(cardIds).size !== cardIds.length ||

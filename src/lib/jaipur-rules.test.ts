@@ -7,6 +7,8 @@ import {
   isLegalSale,
   legalSingleGoods,
   reduceGame,
+  resolveRound,
+  roundEndReason,
   setupRound,
   shuffle
 } from './jaipur-rules';
@@ -167,5 +169,73 @@ describe('selling goods', () => {
     expect(round.ownedBonusTokens.a).toHaveLength(0);
     expect(round.hands.a).toHaveLength(0);
     expect(round.discard).toHaveLength(6);
+  });
+});
+
+describe('round termination and scoring', () => {
+  it('detects both official end conditions after an action', () => {
+    const supplies = setupRound(['a', 'b'], 'empty-supplies', 'a');
+    supplies.goodsTokens.diamond = [];
+    supplies.goodsTokens.gold = [];
+    supplies.goodsTokens.silver = [];
+    expect(roundEndReason(supplies)).toBe('three-empty-supplies');
+
+    const deck = setupRound(['a', 'b'], 'empty-deck', 'a');
+    deck.deck = [];
+    deck.market.pop();
+    expect(roundEndReason(deck)).toBe('deck-exhausted');
+  });
+
+  it('awards five points only for a strict camel majority', () => {
+    const majority = setupRound(['a', 'b'], 'camel-score', 'a');
+    majority.herds.a = [{ id: 'camel-a-1', kind: 'camel' }];
+    majority.herds.b = [];
+    const won = resolveRound(majority, ['a', 'b']);
+    expect(won.camelBonusUid).toBe('a');
+    expect(won.scores.a.camel).toBe(5);
+
+    majority.herds.b = [{ id: 'camel-b-1', kind: 'camel' }];
+    const tied = resolveRound(majority, ['a', 'b']);
+    expect(tied.camelBonusUid).toBeNull();
+    expect(tied.scores.a.camel + tied.scores.b.camel).toBe(0);
+  });
+
+  it('uses bonus-token count and then goods-token count to break score ties', () => {
+    const bonusTie = setupRound(['a', 'b'], 'bonus-tie', 'a');
+    bonusTie.herds.a = [];
+    bonusTie.herds.b = [];
+    bonusTie.ownedBonusTokens.a = [
+      { id: 'bonus-a-1', kind: 'bonus-3', value: 1 },
+      { id: 'bonus-a-2', kind: 'bonus-3', value: 1 }
+    ];
+    bonusTie.ownedGoodsTokens.b = [{ id: 'goods-b', kind: 'leather', value: 2 }];
+    expect(resolveRound(bonusTie, ['a', 'b'])).toMatchObject({
+      winnerUid: 'a',
+      tieBreak: 'bonus-tokens'
+    });
+
+    const goodsTie = setupRound(['a', 'b'], 'goods-tie', 'a');
+    goodsTie.herds.a = [];
+    goodsTie.herds.b = [];
+    goodsTie.ownedGoodsTokens.a = [
+      { id: 'goods-a-1', kind: 'leather', value: 1 },
+      { id: 'goods-a-2', kind: 'leather', value: 1 }
+    ];
+    goodsTie.ownedGoodsTokens.b = [{ id: 'goods-b', kind: 'leather', value: 2 }];
+    expect(resolveRound(goodsTie, ['a', 'b'])).toMatchObject({
+      winnerUid: 'a',
+      tieBreak: 'goods-tokens'
+    });
+  });
+
+  it('awards a residual exact tie to the non-starting trader', () => {
+    const round = setupRound(['a', 'b'], 'residual-tie', 'a');
+    round.herds.a = [];
+    round.herds.b = [];
+    expect(resolveRound(round, ['a', 'b'])).toMatchObject({
+      winnerUid: 'b',
+      loserUid: 'a',
+      tieBreak: 'non-starter'
+    });
   });
 });

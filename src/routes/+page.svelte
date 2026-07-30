@@ -113,9 +113,16 @@
     if (!repository || uid !== lobby.hostUid || lobby.players.length !== 2) return;
     busy = true;
     try {
+      const roundNumber = (lobby.round?.number ?? 0) + 1;
+      const fixedSeed = new URLSearchParams(location.search).get('seed');
       await repository.append('round/started', {
-        seed: new URLSearchParams(location.search).get('seed') ?? crypto.randomUUID(),
-        starterUid: lobby.players[0].uid
+        seed: fixedSeed
+          ? roundNumber === 1
+            ? fixedSeed
+            : `${fixedSeed}:round:${roundNumber}`
+          : crypto.randomUUID(),
+        starterUid: lobby.round?.loserUid ?? lobby.players[0].uid,
+        roundNumber
       });
     } catch (error) {
       showError(error);
@@ -331,6 +338,45 @@
           <button class="secondary" type="button" disabled={busy} onclick={startRound}>
             Open the market
           </button>
+        {/if}
+      </section>
+    {:else if lobby.round.status === 'complete'}
+      <section class="score-review" aria-labelledby="round-result">
+        <p class="eyebrow">Round {lobby.round.number} complete</p>
+        <h2 id="round-result">
+          {lobby.players.find((player) => player.uid === lobby.round?.winnerUid)?.displayName}
+          earns a Seal of Excellence
+        </h2>
+        <p>
+          {lobby.round.endReason === 'three-empty-supplies'
+            ? 'Three goods supplies are empty.'
+            : 'The deck could not completely refill the market.'}
+        </p>
+        <div class="scorecards">
+          {#each lobby.players as player}
+            <article class:winner={player.uid === lobby.round.winnerUid}>
+              <h3>{player.displayName}</h3>
+              <dl>
+                <div><dt>Goods</dt><dd>{lobby.round.scores?.[player.uid]?.goods ?? 0}</dd></div>
+                <div><dt>Bonuses</dt><dd>{lobby.round.scores?.[player.uid]?.bonus ?? 0}</dd></div>
+                <div><dt>Camels</dt><dd>{lobby.round.scores?.[player.uid]?.camel ?? 0}</dd></div>
+                <div><dt>Total</dt><dd>{lobby.round.scores?.[player.uid]?.total ?? 0}</dd></div>
+              </dl>
+              <p>
+                Bonus tokens:
+                {(lobby.round.ownedBonusTokens[player.uid] ?? []).map(({ value }) => value).join(', ') || 'none'}
+              </p>
+              <p>Herd: {lobby.round.herds[player.uid]?.length ?? 0} camels</p>
+              <strong>{lobby.seals[player.uid] ?? 0} / 2 seals</strong>
+            </article>
+          {/each}
+        </div>
+        {#if !lobby.winnerUid && lobby.hostUid === uid}
+          <button type="button" disabled={busy} onclick={startRound}>
+            Open round {lobby.round.number + 1}
+          </button>
+        {:else if !lobby.winnerUid}
+          <p>Waiting for the host to open the next market…</p>
         {/if}
       </section>
     {:else}
@@ -690,6 +736,28 @@
   }
   .token span { font-size: 0.72rem; }
   .token-area > p { margin: 0.65rem 0 0; }
+  .score-review > h2 {
+    margin: 0.5rem auto 1rem;
+    font: 700 2.4rem 'Cormorant Garamond', serif;
+  }
+  .scorecards {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    margin: 1.25rem 0;
+    text-align: left;
+  }
+  .scorecards article {
+    padding: 1rem;
+    border: 2px solid #b7aa8d;
+    border-radius: 0.8rem;
+    background: #fffaf0;
+  }
+  .scorecards article.winner { border-color: #a23e2a; background: #fff0dd; }
+  .scorecards h3 { margin: 0 0 0.65rem; font-size: 1.25rem; }
+  .scorecards dl { margin: 0; }
+  .scorecards dl div { display: flex; justify-content: space-between; }
+  .scorecards dd { margin: 0; font-weight: 700; }
   @media (max-width: 480px) {
     main { padding: 1rem; }
     .hero { padding: 2rem 1.2rem; border-radius: 1.4rem; }
@@ -699,5 +767,6 @@
     .cards article, .cards .card-action { min-height: 5.5rem; padding: 0.45rem; }
     .opponent { flex-wrap: wrap; }
     .tokens { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .scorecards { grid-template-columns: 1fr; }
   }
 </style>
