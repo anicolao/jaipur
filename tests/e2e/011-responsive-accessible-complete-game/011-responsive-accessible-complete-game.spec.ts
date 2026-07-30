@@ -171,13 +171,19 @@ test('the complete table is responsive and accessible by keyboard and touch', as
     description: 'The synchronized table exposes every state without relying on colour',
     verifications: [
       {
-        spec: 'Market, private hand, public supplies, and hidden rival information remain labelled',
+        spec: 'Market, private hand, concealed opponent hand, and public supplies remain labelled',
         check: async () => {
           await expect(page.getByRole('heading', { name: 'Market' })).toBeVisible();
           await expect(page.getByRole('heading', { name: 'Your hand' })).toBeVisible();
           await expect(page.getByRole('heading', { name: 'Token supplies' })).toBeVisible();
           await expect(page.locator('.opponent')).toContainText('Herd hidden');
           await expect(page.locator('.opponent')).toContainText('values hidden');
+          await expect(page.locator('.opponent')).toContainText('2 / 7 cards');
+          await expect(page.locator('.opponent-hand .opponent-card-back')).toHaveCount(2);
+          await expect(page.locator('.opponent-hand')).toHaveAttribute(
+            'aria-label',
+            'Belen has 2 of 7 cards'
+          );
           await expect(page.locator('.token.leather')).toContainText('Leather');
           await expect(page.locator('.token.leather')).toContainText('left');
           await expect(page.locator('.market .piece-image')).toHaveCount(5);

@@ -48,6 +48,12 @@
   const goods: Good[] = ['diamond', 'gold', 'silver', 'cloth', 'spice', 'leather'];
   const componentImage = (kind: Good | 'camel' | 'seal' | 'card-back') =>
     `${assetBase}/components/${kind}.webp`;
+  const opponentPlayer = () => lobby.players.find((player) => player.uid !== uid);
+  const opponentUid = () => opponentPlayer()?.uid ?? '';
+  const opponentHandCount = () => lobby.round?.hands[opponentUid()]?.length ?? 0;
+  const opponentTokenCount = () =>
+    (lobby.round?.ownedGoodsTokens[opponentUid()]?.length ?? 0) +
+    (lobby.round?.ownedBonusTokens[opponentUid()]?.length ?? 0);
   const buildHash = (import.meta.env.VITE_GIT_HASH ?? 'local').slice(0, 7);
 
   onMount(async () => {
@@ -825,15 +831,32 @@
           </div>
         </section>
         <div class="opponent">
-          <img class="opponent-cards" src={componentImage('card-back')} alt="" />
-          <span>{lobby.players.find((player) => player.uid !== uid)?.displayName}</span>
-          <strong>{lobby.round.hands[lobby.players.find((player) => player.uid !== uid)?.uid ?? '']?.length ?? 0} cards</strong>
-          <span>Herd hidden</span>
-          <span>
-            {(lobby.round.ownedGoodsTokens[lobby.players.find((player) => player.uid !== uid)?.uid ?? '']?.length ?? 0) +
-              (lobby.round.ownedBonusTokens[lobby.players.find((player) => player.uid !== uid)?.uid ?? '']?.length ?? 0)}
-            tokens · values hidden
-          </span>
+          <div class="opponent-identity">
+            <strong>{opponentPlayer()?.displayName}</strong>
+            <span>{opponentHandCount()} / 7 cards</span>
+          </div>
+          <div
+            class="opponent-hand"
+            role="img"
+            aria-label={`${opponentPlayer()?.displayName ?? 'Opponent'} has ${opponentHandCount()} of 7 cards`}
+          >
+            {#each Array(opponentHandCount()) as _, index}
+              <img
+                class="opponent-card-back"
+                src={componentImage('card-back')}
+                alt=""
+                draggable="false"
+                style={`--fan-offset: ${index - (opponentHandCount() - 1) / 2}`}
+              />
+            {/each}
+            {#if opponentHandCount() === 0}
+              <span class="opponent-hand-empty">No cards</span>
+            {/if}
+          </div>
+          <div class="opponent-private">
+            <span>Herd hidden</span>
+            <span>{opponentTokenCount()} tokens · values hidden</span>
+          </div>
         </div>
         <section
           class="hand-zone"
@@ -1627,16 +1650,54 @@
   .opponent {
     grid-area: opponent;
     min-height: 44px;
+    display: grid;
+    grid-template-columns: minmax(3.5rem, auto) minmax(0, 1fr) minmax(5.5rem, auto);
     align-items: center;
+    gap: 0.45rem;
     margin: 0;
     padding: 0.3rem 0.5rem;
     font-size: clamp(0.65rem, 1.5vmin, 0.82rem);
   }
-  .opponent-cards {
-    width: 1.7rem;
-    height: 2rem;
+  .opponent-identity,
+  .opponent-private {
+    display: grid;
+    min-width: 0;
+    line-height: 1.1;
+  }
+  .opponent-identity span,
+  .opponent-private span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .opponent-private {
+    text-align: right;
+  }
+  .opponent-hand {
+    display: flex;
+    min-width: 0;
+    min-height: 2rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0.1rem 0.35rem;
+  }
+  .opponent-card-back {
+    width: 1.75rem;
+    height: 1.75rem;
+    flex: 0 0 1.75rem;
     border-radius: 0.25rem;
+    box-shadow: 0 0.12rem 0.22rem rgb(24 58 55 / 28%);
     object-fit: cover;
+    transform: rotate(calc(var(--fan-offset) * 2deg));
+    transform-origin: 50% 90%;
+  }
+  .opponent-card-back + .opponent-card-back {
+    margin-left: -0.65rem;
+  }
+  .opponent-hand-empty {
+    color: #5f6f69;
+    font-size: 0.65rem;
+    font-style: italic;
   }
   .herd-total {
     display: flex;
@@ -1887,8 +1948,17 @@
       height: 1.05rem;
     }
     .opponent {
-      flex-wrap: nowrap;
+      grid-template-columns: minmax(3rem, auto) minmax(0, 1fr) minmax(5rem, auto);
       gap: 0.35rem;
+      padding-inline: 0.35rem;
+    }
+    .opponent-card-back {
+      width: 1.6rem;
+      height: 1.6rem;
+      flex-basis: 1.6rem;
+    }
+    .opponent-card-back + .opponent-card-back {
+      margin-left: -0.65rem;
     }
     .token {
       min-height: 3.35rem;
