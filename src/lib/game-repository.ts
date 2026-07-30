@@ -2,8 +2,6 @@ import {
   collection,
   doc,
   onSnapshot,
-  orderBy,
-  query,
   serverTimestamp,
   setDoc,
   type Firestore,
@@ -61,7 +59,7 @@ export function createGameRepository(
 
     subscribe(onEvents, onError) {
       return onSnapshot(
-        query(stream, orderBy('createdAt')),
+        stream,
         (snapshot) => {
           const events = snapshot.docs
             .map((snapshotDocument): GameEvent => {
