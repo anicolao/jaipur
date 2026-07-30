@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applySale,
   cardCount,
   createDeck,
   isLegalExchange,
+  isLegalSale,
   legalSingleGoods,
   reduceGame,
   setupRound,
@@ -124,5 +126,46 @@ describe('exchanging goods', () => {
       { id: 'return-camel-2', kind: 'camel' }
     ];
     expect(isLegalExchange(round, 'a', taken, round.herds.a.map(({ id }) => id))).toBe(false);
+  });
+});
+
+describe('selling goods', () => {
+  it('enforces a single goods type and the expensive-goods two-card minimum', () => {
+    const round = setupRound(['a', 'b'], 'sale-day', 'a');
+    round.hands.a = [
+      { id: 'diamond-a', kind: 'diamond' },
+      { id: 'diamond-b', kind: 'diamond' },
+      { id: 'cloth-a', kind: 'cloth' }
+    ];
+    expect(isLegalSale(round, 'a', 'diamond', ['diamond-a'])).toBe(false);
+    expect(isLegalSale(round, 'a', 'diamond', ['diamond-a', 'diamond-b'])).toBe(true);
+    expect(isLegalSale(round, 'a', 'cloth', ['cloth-a'])).toBe(true);
+    expect(isLegalSale(round, 'a', 'diamond', ['diamond-a', 'cloth-a'])).toBe(false);
+    expect(isLegalSale(round, 'b', 'cloth', ['cloth-a'])).toBe(false);
+  });
+
+  it('awards remaining goods tokens in order and one deterministic size bonus', () => {
+    const round = setupRound(['a', 'b'], 'fixed-round-007-15', 'a');
+    const spices = round.hands.a.filter(({ kind }) => kind === 'spice');
+    const expectedBonus = round.bonusTokens['3'][0];
+    expect(applySale(round, 'a', 'spice', spices.map(({ id }) => id))).toBe(true);
+    expect(round.ownedGoodsTokens.a.map(({ value }) => value)).toEqual([5, 3, 3]);
+    expect(round.ownedBonusTokens.a).toEqual([expectedBonus]);
+    expect(round.discard).toEqual(spices);
+  });
+
+  it('allows a large sale when goods and bonus supplies are depleted', () => {
+    const round = setupRound(['a', 'b'], 'depleted-sale', 'a');
+    round.hands.a = Array.from({ length: 6 }, (_, index) => ({
+      id: `leather-sale-${index}`,
+      kind: 'leather' as const
+    }));
+    round.goodsTokens.leather = round.goodsTokens.leather.slice(0, 2);
+    round.bonusTokens['5'] = [];
+    expect(applySale(round, 'a', 'leather', round.hands.a.map(({ id }) => id))).toBe(true);
+    expect(round.ownedGoodsTokens.a).toHaveLength(2);
+    expect(round.ownedBonusTokens.a).toHaveLength(0);
+    expect(round.hands.a).toHaveLength(0);
+    expect(round.discard).toHaveLength(6);
   });
 });

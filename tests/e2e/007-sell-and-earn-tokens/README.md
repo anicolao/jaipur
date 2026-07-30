@@ -1,0 +1,22 @@
+# Sell goods and earn tokens
+
+Asha earns ordered goods tokens and a private size bonus before Belen completes an ordinary sale.
+
+## A three-card sale awards ordered goods tokens and one hidden bonus
+
+![A three-card sale awards ordered goods tokens and one hidden bonus](./screenshots/000-large-sale-desktop.png)
+
+**Verifications:**
+
+- [x] Asha sees the exact four-token award and private total
+- [x] The public spice supply loses its three highest tokens
+- [x] Belen sees the token count without Asha’s bonus value
+
+## Belen completes a one-card ordinary-goods sale
+
+![Belen completes a one-card ordinary-goods sale](./screenshots/001-ordinary-sale-desktop.png)
+
+**Verifications:**
+
+- [x] The next ordered spice token belongs to Belen
+- [x] Asha sees only Belen’s public token count

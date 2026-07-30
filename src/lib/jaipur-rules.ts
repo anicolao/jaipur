@@ -26,6 +26,8 @@ export interface RoundState {
   discard: Card[];
   goodsTokens: Record<Good, Token[]>;
   bonusTokens: Record<'3' | '4' | '5', Token[]>;
+  ownedGoodsTokens: Record<string, Token[]>;
+  ownedBonusTokens: Record<string, Token[]>;
 }
 
 export interface GameState extends LobbyState {
@@ -151,7 +153,9 @@ export function setupRound(playerUids: string[], seed: string, activeUid: string
     herds,
     discard: [],
     goodsTokens,
-    bonusTokens
+    bonusTokens,
+    ownedGoodsTokens: Object.fromEntries(playerUids.map((uid) => [uid, []])),
+    ownedBonusTokens: Object.fromEntries(playerUids.map((uid) => [uid, []]))
   };
 }
 
@@ -254,6 +258,24 @@ export function reduceGame(events: GameEvent[]): GameState {
       round.activeUid =
         lobby.players.find(({ uid }) => uid !== event.actorUid)?.uid ?? round.activeUid;
       round.turnNumber += 1;
+      continue;
+    }
+
+    if (event.type === 'cards/sold') {
+      const kind = event.payload.kind;
+      const cardIds = event.payload.cardIds;
+      if (
+        typeof kind !== 'string' ||
+        !Array.isArray(cardIds) ||
+        !isGood(kind) ||
+        !applySale(round, event.actorUid, kind, cardIds)
+      ) {
+        lobby.diagnostics.push(`${event.id}: invalid sale`);
+        continue;
+      }
+      round.activeUid =
+        lobby.players.find(({ uid }) => uid !== event.actorUid)?.uid ?? round.activeUid;
+      round.turnNumber += 1;
     }
   }
   return { ...lobby, round };
@@ -297,6 +319,51 @@ export function isLegalExchange(
     round.hands[uid].some(({ id }) => id === card.id)
   ).length;
   return round.hands[uid].length - returnedFromHand + taken.length <= 7;
+}
+
+export function isGood(value: string): value is Good {
+  return value !== 'camel' && value in GOODS_VALUES;
+}
+
+export function isLegalSale(
+  round: RoundState,
+  uid: string,
+  kind: Good,
+  cardIds: unknown[]
+): boolean {
+  if (
+    round.activeUid !== uid ||
+    cardIds.length === 0 ||
+    new Set(cardIds).size !== cardIds.length ||
+    !cardIds.every((id): id is string => typeof id === 'string')
+  ) {
+    return false;
+  }
+  const sold = (round.hands[uid] ?? []).filter(({ id }) => cardIds.includes(id));
+  return (
+    sold.length === cardIds.length &&
+    sold.every((card) => card.kind === kind) &&
+    (!['diamond', 'gold', 'silver'].includes(kind) || sold.length >= 2)
+  );
+}
+
+export function applySale(
+  round: RoundState,
+  uid: string,
+  kind: Good,
+  cardIds: unknown[]
+): boolean {
+  if (!isLegalSale(round, uid, kind, cardIds)) return false;
+  const sold = round.hands[uid].filter(({ id }) => cardIds.includes(id));
+  round.hands[uid] = round.hands[uid].filter(({ id }) => !cardIds.includes(id));
+  round.discard.push(...sold);
+  round.ownedGoodsTokens[uid].push(...round.goodsTokens[kind].splice(0, sold.length));
+  if (sold.length >= 3) {
+    const bonusSize = String(Math.min(sold.length, 5)) as '3' | '4' | '5';
+    const bonus = round.bonusTokens[bonusSize].shift();
+    if (bonus) round.ownedBonusTokens[uid].push(bonus);
+  }
+  return true;
 }
 
 export function cardCount(round: RoundState): number {

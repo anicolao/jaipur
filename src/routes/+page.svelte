@@ -6,7 +6,14 @@
   import { onMount } from 'svelte';
   import { initializeFirebase } from '$lib/firebase';
   import { createGameRepository, type GameRepository } from '$lib/game-repository';
-  import { isLegalExchange, reduceGame, type GameState } from '$lib/jaipur-rules';
+  import {
+    isLegalExchange,
+    isLegalSale,
+    reduceGame,
+    type Card,
+    type GameState,
+    type Good
+  } from '$lib/jaipur-rules';
 
   let status = $state<'connecting' | 'synced' | 'error'>('connecting');
   let statusText = $state('Connecting to Firebase…');
@@ -20,6 +27,10 @@
   let exchangeMode = $state(false);
   let selectedMarket = $state<string[]>([]);
   let selectedReturn = $state<string[]>([]);
+  let saleMode = $state(false);
+  let saleKind = $state<Good | null>(null);
+  let selectedSale = $state<string[]>([]);
+  const goods: Good[] = ['diamond', 'gold', 'silver', 'cloth', 'spice', 'leather'];
 
   onMount(async () => {
     try {
@@ -154,6 +165,33 @@
     selectedReturn = [];
   }
 
+  function cancelSale() {
+    saleMode = false;
+    saleKind = null;
+    selectedSale = [];
+  }
+
+  function beginExchange() {
+    cancelSale();
+    exchangeMode = true;
+  }
+
+  function beginSale() {
+    cancelExchange();
+    saleMode = true;
+  }
+
+  function toggleSale(card: Card) {
+    if (selectedSale.includes(card.id)) {
+      selectedSale = selectedSale.filter((id) => id !== card.id);
+      if (selectedSale.length === 0) saleKind = null;
+      return;
+    }
+    if (saleKind && saleKind !== card.kind) return;
+    saleKind = card.kind as Good;
+    selectedSale = [...selectedSale, card.id];
+  }
+
   function projectedHandSize() {
     if (!lobby.round) return 0;
     const handReturns = selectedReturn.filter((id) =>
@@ -184,6 +222,39 @@
     } finally {
       busy = false;
     }
+  }
+
+  async function confirmSale() {
+    if (
+      !repository ||
+      !lobby.round ||
+      !saleKind ||
+      !isLegalSale(lobby.round, uid, saleKind, selectedSale)
+    ) {
+      return;
+    }
+    busy = true;
+    try {
+      await repository.append('cards/sold', {
+        kind: saleKind,
+        cardIds: selectedSale,
+        roundNumber: lobby.round.number,
+        turnNumber: lobby.round.turnNumber
+      });
+      cancelSale();
+    } catch (error) {
+      showError(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function ownedTokenValue() {
+    if (!lobby.round) return 0;
+    return [
+      ...(lobby.round.ownedGoodsTokens[uid] ?? []),
+      ...(lobby.round.ownedBonusTokens[uid] ?? [])
+    ].reduce((total, token) => total + token.value, 0);
   }
 
   const cardLabel = (kind: string) => kind[0].toUpperCase() + kind.slice(1);
@@ -278,9 +349,17 @@
               class="secondary"
               type="button"
               aria-pressed={exchangeMode}
-              onclick={() => (exchangeMode ? cancelExchange() : (exchangeMode = true))}
+              onclick={() => (exchangeMode ? cancelExchange() : beginExchange())}
             >
               {exchangeMode ? 'Cancel exchange' : 'Exchange goods'}
+            </button>
+            <button
+              class="secondary"
+              type="button"
+              aria-pressed={saleMode}
+              onclick={() => (saleMode ? cancelSale() : beginSale())}
+            >
+              {saleMode ? 'Cancel sale' : 'Sell goods'}
             </button>
             {#if exchangeMode}
               <button
@@ -290,17 +369,25 @@
               >
                 Confirm {selectedMarket.length} for {selectedReturn.length} · hand {projectedHandSize()} / 7
               </button>
+            {:else if saleMode}
+              <button
+                type="button"
+                disabled={!saleKind || !isLegalSale(lobby.round, uid, saleKind, selectedSale) || busy}
+                onclick={confirmSale}
+              >
+                Sell {selectedSale.length} {saleKind ? cardLabel(saleKind) : 'goods'}
+              </button>
             {/if}
           </div>
         {/if}
-        {#if !exchangeMode && lobby.round.activeUid === uid && lobby.round.market.some((card) => card.kind === 'camel')}
+        {#if !exchangeMode && !saleMode && lobby.round.activeUid === uid && lobby.round.market.some((card) => card.kind === 'camel')}
           <button class="take-camels" type="button" disabled={busy} onclick={takeCamels}>
             Take all {lobby.round.market.filter((card) => card.kind === 'camel').length} camels
           </button>
         {/if}
         <div class="cards market">
           {#each lobby.round.market as card}
-            {#if card.kind !== 'camel' && lobby.round.activeUid === uid && (exchangeMode || (lobby.round.hands[uid]?.length ?? 0) < 7)}
+            {#if card.kind !== 'camel' && lobby.round.activeUid === uid && !saleMode && (exchangeMode || (lobby.round.hands[uid]?.length ?? 0) < 7)}
               <button
                 class="card-action"
                 class:selected={selectedMarket.includes(card.id)}
@@ -329,6 +416,11 @@
           <span>{lobby.players.find((player) => player.uid !== uid)?.displayName}</span>
           <strong>{lobby.round.hands[lobby.players.find((player) => player.uid !== uid)?.uid ?? '']?.length ?? 0} cards</strong>
           <span>Herd hidden</span>
+          <span>
+            {(lobby.round.ownedGoodsTokens[lobby.players.find((player) => player.uid !== uid)?.uid ?? '']?.length ?? 0) +
+              (lobby.round.ownedBonusTokens[lobby.players.find((player) => player.uid !== uid)?.uid ?? '']?.length ?? 0)}
+            tokens · values hidden
+          </span>
         </div>
         <h2>Your hand</h2>
         <div class="cards hand">
@@ -342,6 +434,20 @@
                 aria-pressed={selectedReturn.includes(card.id)}
                 data-card-id={card.id}
                 onclick={() => (selectedReturn = toggleSelection(selectedReturn, card.id))}
+              >
+                <span>{cardLabel(card.kind)}</span>
+                <small>{card.id}</small>
+              </button>
+            {:else if saleMode}
+              <button
+                class="card-action sale-card"
+                class:selected={selectedSale.includes(card.id)}
+                type="button"
+                disabled={Boolean(saleKind && saleKind !== card.kind)}
+                aria-label={`Select ${cardLabel(card.kind)} ${card.id} for sale`}
+                aria-pressed={selectedSale.includes(card.id)}
+                data-card-id={card.id}
+                onclick={() => toggleSale(card)}
               >
                 <span>{cardLabel(card.kind)}</span>
                 <small>{card.id}</small>
@@ -370,6 +476,27 @@
             {/each}
           </div>
         {/if}
+        <section class="token-area" aria-label="Token supplies">
+          <h2>Token supplies</h2>
+          <div class="tokens">
+            {#each goods as kind}
+              <article class={`token ${kind}`}>
+                <strong>{cardLabel(kind)}</strong>
+                <span>{lobby.round.goodsTokens[kind].length} left</span>
+                <span>Next {lobby.round.goodsTokens[kind][0]?.value ?? '—'}</span>
+              </article>
+            {/each}
+          </div>
+          <p>
+            Your tokens:
+            <strong>
+              {(lobby.round.ownedGoodsTokens[uid]?.length ?? 0) +
+                (lobby.round.ownedBonusTokens[uid]?.length ?? 0)}
+              worth {ownedTokenValue()}
+            </strong>
+            · Bonus values are private.
+          </p>
+        </section>
       </section>
     {/if}
 
@@ -546,6 +673,23 @@
     border-radius: 0.65rem;
     background: #e9dcc1;
   }
+  .token-area { margin-top: 1rem; }
+  .tokens {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.35rem;
+  }
+  .token {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+    padding: 0.45rem 0.25rem;
+    border-radius: 0.55rem;
+    color: white;
+    text-align: center;
+  }
+  .token span { font-size: 0.72rem; }
+  .token-area > p { margin: 0.65rem 0 0; }
   @media (max-width: 480px) {
     main { padding: 1rem; }
     .hero { padding: 2rem 1.2rem; border-radius: 1.4rem; }
@@ -554,5 +698,6 @@
     .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .cards article, .cards .card-action { min-height: 5.5rem; padding: 0.45rem; }
     .opponent { flex-wrap: wrap; }
+    .tokens { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
 </style>
