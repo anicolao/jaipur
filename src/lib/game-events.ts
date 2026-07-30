@@ -1,7 +1,11 @@
 export const SCHEMA_VERSION = 1;
 export const REDUCER_VERSION = 1;
 
-export type GameEventType = 'game/created' | 'player/joined' | 'player/ready';
+export type GameEventType =
+  | 'game/created'
+  | 'player/joined'
+  | 'player/ready'
+  | 'round/started';
 
 export interface GameEvent {
   id: string;

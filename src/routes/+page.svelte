@@ -5,15 +5,15 @@
   import { replaceState } from '$app/navigation';
   import { onMount } from 'svelte';
   import { initializeFirebase } from '$lib/firebase';
-  import { reduceLobby, type LobbyState } from '$lib/game-events';
   import { createGameRepository, type GameRepository } from '$lib/game-repository';
+  import { reduceGame, type GameState } from '$lib/jaipur-rules';
 
   let status = $state<'connecting' | 'synced' | 'error'>('connecting');
   let statusText = $state('Connecting to Firebase…');
   let uid = $state('');
   let requestedGameId = $state('');
   let displayName = $state('');
-  let lobby = $state<LobbyState>(reduceLobby([]));
+  let lobby = $state<GameState>(reduceGame([]));
   let repository = $state<GameRepository>();
   let busy = $state(false);
   let shellOnly = $state(true);
@@ -52,7 +52,7 @@
     repository = attached;
     attached.subscribe(
       (events) => {
-        lobby = reduceLobby(events);
+        lobby = reduceGame(events);
         status = 'synced';
         statusText = 'Game synced';
       },
@@ -72,7 +72,9 @@
         displayName: displayName.trim()
       });
       localStorage.setItem(`jaipur:${requestedGameId.trim()}:${uid}:name`, displayName.trim());
-      replaceState(`?gameId=${encodeURIComponent(requestedGameId.trim())}`, {});
+      const params = new URLSearchParams(location.search);
+      params.set('gameId', requestedGameId.trim());
+      replaceState(`?${params.toString()}`, {});
     } catch (error) {
       showError(error);
     } finally {
@@ -92,6 +94,23 @@
       busy = false;
     }
   }
+
+  async function startRound() {
+    if (!repository || uid !== lobby.hostUid || lobby.players.length !== 2) return;
+    busy = true;
+    try {
+      await repository.append('round/started', {
+        seed: new URLSearchParams(location.search).get('seed') ?? crypto.randomUUID(),
+        starterUid: lobby.players[0].uid
+      });
+    } catch (error) {
+      showError(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  const cardLabel = (kind: string) => kind[0].toUpperCase() + kind.slice(1);
 </script>
 
 <svelte:head>
@@ -137,7 +156,7 @@
           >
         </div>
       </form>
-    {:else}
+    {:else if !lobby.round}
       <section class="lobby" aria-label="Game lobby">
         <div class="room-code">
           <span>Game code</span>
@@ -161,6 +180,45 @@
         <button type="button" disabled={busy} onclick={toggleReady}>
           {lobby.players.find((player) => player.uid === uid)?.ready ? 'Not ready' : 'Ready to trade'}
         </button>
+        {#if lobby.hostUid === uid && lobby.players.length === 2 && lobby.players.every((player) => player.ready)}
+          <button class="secondary" type="button" disabled={busy} onclick={startRound}>
+            Open the market
+          </button>
+        {/if}
+      </section>
+    {:else}
+      <section class="table" aria-label="Jaipur market">
+        <header>
+          <div>
+            <span>Round {lobby.round.number}</span>
+            <strong>{lobby.players.find((player) => player.uid === lobby.round?.activeUid)?.displayName}'s turn</strong>
+          </div>
+          <div><span>Deck</span><strong>{lobby.round.deck.length}</strong></div>
+        </header>
+        <h2>Market</h2>
+        <div class="cards market">
+          {#each lobby.round.market as card}
+            <article class:camel={card.kind === 'camel'} data-card-id={card.id}>
+              <span>{cardLabel(card.kind)}</span>
+              <small>{card.id}</small>
+            </article>
+          {/each}
+        </div>
+        <div class="opponent">
+          <span>{lobby.players.find((player) => player.uid !== uid)?.displayName}</span>
+          <strong>{lobby.round.hands[lobby.players.find((player) => player.uid !== uid)?.uid ?? '']?.length ?? 0} cards</strong>
+          <span>Herd hidden</span>
+        </div>
+        <h2>Your hand</h2>
+        <div class="cards hand">
+          {#each lobby.round.hands[uid] ?? [] as card}
+            <article data-card-id={card.id}>
+              <span>{cardLabel(card.kind)}</span>
+              <small>{card.id}</small>
+            </article>
+          {/each}
+        </div>
+        <p>Your herd: <strong>{lobby.round.herds[uid]?.length ?? 0} camels</strong></p>
       </section>
     {/if}
 
@@ -262,6 +320,7 @@
   button.secondary { background: #315f58; }
   button:disabled { cursor: not-allowed; opacity: 0.45; }
   .lobby { margin: 0 auto 1.5rem; }
+  .lobby button + button { margin-left: 0.5rem; }
   .room-code { display: grid; margin-bottom: 1rem; }
   .room-code span { color: #66746e; font-size: 0.85rem; text-transform: uppercase; }
   .room-code strong { font-size: 1.35rem; letter-spacing: 0.08em; }
@@ -291,10 +350,47 @@
   [data-status='synced'] { color: #236142; }
   [data-status='error'] { color: #a3212a; }
   .build { margin: 0.55rem 0 0; color: #5f6f69; font-size: 0.875rem; }
+  .table { text-align: left; }
+  .table header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 0.8rem;
+    border-bottom: 1px solid #b7aa8d;
+  }
+  .table header div { display: grid; }
+  .table h2 { margin: 1rem 0 0.5rem; font: 700 1.8rem 'Cormorant Garamond', serif; }
+  .cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.55rem; }
+  .cards article {
+    min-height: 7.5rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 0.65rem;
+    border: 2px solid #315f58;
+    border-radius: 0.75rem;
+    background: #fffaf0;
+    color: #183a37;
+    font-weight: 700;
+  }
+  .cards article.camel { border-color: #a23e2a; background: #f7d69f; }
+  .cards small { color: #66746e; font-size: 0.7rem; }
+  .opponent {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    padding: 0.65rem;
+    border-radius: 0.65rem;
+    background: #e9dcc1;
+  }
   @media (max-width: 480px) {
     main { padding: 1rem; }
     .hero { padding: 2rem 1.2rem; border-radius: 1.4rem; }
     li { grid-template-columns: auto 1fr; }
     li > :last-child { grid-column: 2; }
+    .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .cards article { min-height: 5.5rem; padding: 0.45rem; }
+    .opponent { flex-wrap: wrap; }
   }
 </style>
