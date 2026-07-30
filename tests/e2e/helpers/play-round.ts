@@ -7,8 +7,14 @@ export async function playRoundToCompletion(
   rival: Page,
   limit = 100
 ): Promise<number> {
-  let active = (await host.locator('.turn-actions').count()) ? host : rival;
-  await expect(active.locator('.turn-actions')).toBeVisible();
+  let active = await Promise.race([
+    expect(host.locator('.turn-actions'))
+      .toBeVisible()
+      .then(() => host),
+    expect(rival.locator('.turn-actions'))
+      .toBeVisible()
+      .then(() => rival)
+  ]);
   for (let action = 0; action < limit; action += 1) {
     if (await active.locator('.score-review').count()) {
       await expect(host.locator('.score-review')).toBeVisible();
