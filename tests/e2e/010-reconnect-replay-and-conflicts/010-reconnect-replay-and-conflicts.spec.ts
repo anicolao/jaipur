@@ -54,16 +54,15 @@ test('offline replay converges and malformed stream entries stay deterministic',
     'Reconnect, replay, and conflicts',
     'Belen replays a cached game after disconnection; concurrent, duplicate, and incompatible events remain visible but harmless.'
   );
-  const gameId = `e2e-replay-010-${testInfo.project.name}`;
-  const { rivalContext, rival } = await openRound(
+  const { gameId, rivalContext, rival } = await openRound(
     browser,
     page,
-    gameId,
+    `e2e-replay-010-${testInfo.project.name}`,
     'fixed-round-010'
   );
 
   await rival.getByRole('button', { name: 'Work offline' }).click();
-  await expect(rival.getByText('Offline — showing cached game')).toBeVisible();
+  await expect(rival.getByText('Offline — cached view only')).toBeVisible();
   await page.locator('.market button').first().click();
   await expect(page.getByText("Belen's turn")).toBeVisible();
   await expect(rival.getByText("Asha's turn")).toBeVisible();
@@ -171,9 +170,6 @@ test('offline replay converges and malformed stream entries stay deterministic',
             'This game contains an incompatible protocol version'
           );
           await expect(page.locator('.diagnostics')).toContainText('incompatible version');
-          await page
-            .locator('.diagnostics')
-            .evaluate((element) => element.scrollIntoView({ block: 'center' }));
         }
       }
     ]

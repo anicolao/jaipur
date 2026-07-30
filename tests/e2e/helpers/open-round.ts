@@ -1,6 +1,8 @@
 import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { e2eRoomCode } from './room-code';
 
 export interface OpenRound {
+  gameId: string;
   rivalContext: BrowserContext;
   rival: Page;
 }
@@ -11,10 +13,11 @@ export async function openRound(
   gameId: string,
   seed: string
 ): Promise<OpenRound> {
-  const url = `/?gameId=${gameId}&seed=${seed}`;
+  const roomCode = e2eRoomCode(gameId);
+  const url = `/?gameId=${roomCode}&seed=${seed}`;
   await host.goto(url);
   await host.getByLabel('Your trader name').fill('Asha');
-  await host.getByRole('button', { name: 'Create game' }).click();
+  await host.getByRole('button', { name: 'Create new game' }).click();
 
   const rivalContext = await browser.newContext();
   const rival = await rivalContext.newPage();
@@ -27,5 +30,5 @@ export async function openRound(
   await host.getByRole('button', { name: 'Open the market' }).click();
   await expect(host.locator('.market')).toBeVisible();
   await expect(rival.locator('.market')).toBeVisible();
-  return { rivalContext, rival };
+  return { gameId: roomCode, rivalContext, rival };
 }

@@ -23,9 +23,10 @@ commit contract, and vertical-slice sequence.
 ## Play
 
 Open [the live game](https://anicolao.github.io/jaipur/), enter your trader
-name, choose a game code, and create the room. Share the resulting invite URL
-with your rival; they enter their name and join the same room. Both players
-then mark themselves ready and the host opens the first round.
+name, and create the room. The game automatically reserves an uppercase
+five-letter code and places it in the invite URL. Share that URL with your
+rival; they enter their name and join. Both players then mark themselves ready
+and the host opens the first round.
 
 ## Technical foundation
 
@@ -79,13 +80,23 @@ pressed states, text instructions, and touch targets of at least 44 CSS pixels.
 Turn and connection changes are announced to assistive technology. The layout
 accounts for device safe areas, honours reduced-motion preferences, and is
 continuously checked for clipping and overlapping controls at phone portrait,
-phone landscape, tablet, and desktop sizes.
+phone landscape, tablet, and desktop sizes. Every tested game, lobby, score,
+and conflict state fits inside its viewport without document scrolling.
+
+Cards, goods tokens, bonus tokens, camel markers, deck backs, and seals all use
+an original generated gouache component system. See [ASSETS.md](ASSETS.md) for
+the source prompts, inventory, and usage map.
 
 The static site includes a web app manifest and original scalable icon, so
 supporting browsers can install it from the production URL. The game remains a
 networked experience; installation does not make Firebase multiplayer
 available without a connection, though an opened game can be viewed from its
 local replay cache while disconnected.
+
+“Work offline” deliberately disables Firestore networking for that browser and
+shows a read-only projection from its cached immutable event stream. Opponent
+moves stop arriving until “Reconnect” is selected; reconnecting downloads and
+replays the canonical stream so both clients converge again.
 
 ## Firebase
 

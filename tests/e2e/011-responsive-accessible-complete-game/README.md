@@ -22,3 +22,4 @@ The complete market remains legible and operable by keyboard and touch at phone 
 - [x] Market, private hand, public supplies, and hidden rival information remain labelled
 - [x] Reconnect is keyboard operable and returns to an announced synchronized state
 - [x] All remaining controls retain accessible names and touch-sized targets
+- [x] The complete table fits the viewport without document scrolling

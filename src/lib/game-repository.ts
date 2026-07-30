@@ -3,7 +3,10 @@ import {
   disableNetwork,
   doc,
   enableNetwork,
+  getDocs,
+  limit,
   onSnapshot,
+  query,
   serverTimestamp,
   setDoc,
   type Firestore,
@@ -36,6 +39,13 @@ export interface GameRepository {
   ) => Unsubscribe;
   disconnect: () => Promise<void>;
   reconnect: () => Promise<void>;
+}
+
+export async function gameRoomExists(db: Firestore, gameId: string): Promise<boolean> {
+  const snapshot = await getDocs(
+    query(collection(db, 'games', gameId, 'events'), limit(1))
+  );
+  return !snapshot.empty;
 }
 
 export function createGameRepository(

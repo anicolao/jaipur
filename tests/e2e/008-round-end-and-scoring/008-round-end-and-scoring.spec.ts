@@ -30,6 +30,8 @@ test('a production-size round scores and resets for its loser', async ({ browser
         check: async () => {
           await expect(page.locator('.scorecards article.winner')).toContainText('1 / 2 seals');
           await expect(page.locator('.scorecards article:not(.winner)')).toContainText('0 / 2 seals');
+          await expect(page.locator('.result-seal')).toBeVisible();
+          await expect(page.locator('.score-components img').first()).toBeVisible();
         }
       },
       {

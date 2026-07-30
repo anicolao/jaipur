@@ -1,18 +1,28 @@
 import { expect, test } from '@playwright/test';
+import { e2eRoomCode } from '../helpers/room-code';
 import { TestStepHelper } from '../helpers/test-step-helper';
 
 test('two anonymous traders share an append-only lobby', async ({ browser, page }, testInfo) => {
-  const gameId = `e2e-room-002-${testInfo.project.name}`;
+  const gameId = e2eRoomCode(`room-002-${testInfo.project.name}`);
   const steps = new TestStepHelper(page, testInfo);
   steps.setMetadata(
     'Create and join a game',
     'Two isolated anonymous browser contexts converge on the same Jaipur room.'
   );
 
+  await page.addInitScript((roomCode) => {
+    const original = crypto.getRandomValues.bind(crypto);
+    crypto.getRandomValues = ((array: ArrayBufferView) => {
+      if (array instanceof Uint8Array && array.length === roomCode.length) {
+        array.set([...roomCode].map((letter) => letter.charCodeAt(0) - 65));
+        return array;
+      }
+      return original(array);
+    }) as typeof crypto.getRandomValues;
+  }, gameId);
   await page.goto('/');
   await page.getByLabel('Your trader name').fill('Asha');
-  await page.getByLabel('Game code — choose one or paste an invite').fill(gameId);
-  await page.getByRole('button', { name: 'Create game' }).click();
+  await page.getByRole('button', { name: 'Create new game' }).click();
   await expect(page).toHaveURL(new RegExp(`[?&]gameId=${gameId}(?:&|$)`));
   await expect(page.getByText('Waiting for a rival…')).toBeVisible();
 
