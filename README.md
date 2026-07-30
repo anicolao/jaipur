@@ -87,16 +87,19 @@ Cards, goods tokens, bonus tokens, camel markers, deck backs, and seals all use
 an original generated gouache component system. See [ASSETS.md](ASSETS.md) for
 the source prompts, inventory, and usage map.
 
+On a turn, clicking a goods card takes it and clicking any market camel takes
+the complete camel group. Each market good has camel and hand-card exchange
+destinations beneath it. Returns can be routed by selecting either end first or
+by dragging a hand card onto a card-back destination, then a legal multi-card
+trade is confirmed as one action. Hand cards can also be selected and sold by
+clicking their matching token stack; clicking a stack with no selection sells
+all legal cards of that kind.
+
 The static site includes a web app manifest and original scalable icon, so
 supporting browsers can install it from the production URL. The game remains a
 networked experience; installation does not make Firebase multiplayer
 available without a connection, though an opened game can be viewed from its
 local replay cache while disconnected.
-
-“Work offline” deliberately disables Firestore networking for that browser and
-shows a read-only projection from its cached immutable event stream. Opponent
-moves stop arriving until “Reconnect” is selected; reconnecting downloads and
-replays the canonical stream so both clients converge again.
 
 ## Firebase
 

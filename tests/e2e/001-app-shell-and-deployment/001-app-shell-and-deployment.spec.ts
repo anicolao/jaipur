@@ -36,9 +36,9 @@ test('application shell reaches Firebase and renders deterministically', async (
           expect(page.getByRole('status')).toHaveText('Firebase emulator ready')
       },
       {
-        spec: 'The deterministic build marker is visible',
+        spec: 'The deterministic short build marker is visible',
         check: async () =>
-          expect(page.getByTestId('build-marker')).toHaveText('Build e2e-test-commit')
+          expect(page.getByTestId('build-marker')).toHaveText('Build e2e-tes')
       }
     ]
   });

@@ -65,7 +65,7 @@ test('a complete best-of-three match ends at two seals and rematches', async ({ 
           await expect(page.getByText('Round 1')).toBeVisible();
           await expect(page.locator('.seal-track')).toContainText('Asha: 0 / 2 seals');
           await expect(page.locator('.seal-track')).toContainText('Belen: 0 / 2 seals');
-          await expect(page.locator('.market').locator('article, button')).toHaveCount(5);
+          await expect(page.locator('.market .market-slot')).toHaveCount(5);
         }
       },
       {

@@ -16,15 +16,17 @@ test('the active trader exchanges market goods for herd camels', async ({ browse
   );
   const deckBefore = await page.getByText('Deck').locator('..').locator('strong').textContent();
 
-  await page.getByRole('button', { name: 'Exchange goods' }).click();
-  await expect(page.getByRole('button', { name: /^Confirm 0 for 0/ })).toBeDisabled();
-  await expect(page.getByRole('button', { name: /^Select Camel/ })).toHaveCount(0);
-  await page.getByRole('button', { name: /^Select Diamond/ }).click();
-  await expect(page.getByRole('button', { name: /^Confirm 1 for 0/ })).toBeDisabled();
-  await page.getByRole('button', { name: /^Select Gold/ }).click();
-  await page.getByRole('button', { name: 'Return camel 1' }).click();
-  await page.getByRole('button', { name: 'Return camel 2' }).click();
-  await page.getByRole('button', { name: /^Confirm 2 for 2/ }).click();
+  await expect(
+    page.getByRole('button', { name: /^Exchange Camel .* for a camel/ })
+  ).toHaveCount(0);
+  await page
+    .getByRole('button', { name: /^Exchange Diamond .* for a camel/ })
+    .click();
+  await expect(page.getByRole('button', { name: 'Trade 1 for 1' })).toBeDisabled();
+  await page
+    .getByRole('button', { name: /^Exchange Gold .* for a camel/ })
+    .click();
+  await page.getByRole('button', { name: 'Trade 2 for 2' }).click();
 
   await steps.step('exchange-complete', {
     description: 'Two goods and two camels change zones together',

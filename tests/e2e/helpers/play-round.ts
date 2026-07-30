@@ -8,10 +8,10 @@ export async function playRoundToCompletion(
   limit = 100
 ): Promise<number> {
   let active = await Promise.race([
-    expect(host.locator('.turn-actions'))
+    expect(host.locator('.market .card-action').first())
       .toBeVisible()
       .then(() => host),
-    expect(rival.locator('.turn-actions'))
+    expect(rival.locator('.market .card-action').first())
       .toBeVisible()
       .then(() => rival)
   ]);
@@ -20,32 +20,37 @@ export async function playRoundToCompletion(
       await expect(host.locator('.score-review')).toBeVisible();
       return action;
     }
-    const hand = await active.locator('.hand article').evaluateAll((cards) =>
+    const hand = await active.locator('.hand [data-card-id]').evaluateAll((cards) =>
       cards.map((card) => ({
         id: card.getAttribute('data-card-id') ?? '',
-        kind: card.querySelector('span')?.textContent ?? ''
+        kind: card.querySelector('.piece-label')?.textContent ?? ''
       }))
     );
     const groups = Map.groupBy(hand, ({ kind }) => kind);
-    const sale = [...groups.entries()].find(
-      ([kind, cards]) => commonGoods.has(kind) || cards.length >= 2
-    );
+    let sale: [string, { id: string; kind: string }[]] | undefined;
+    for (const entry of groups.entries()) {
+      const [kind, cards] = entry;
+      if (
+        (commonGoods.has(kind) || cards.length >= 2) &&
+        (await active.locator(`.token.${kind.toLowerCase()}:not(:disabled)`).count())
+      ) {
+        sale = entry;
+        break;
+      }
+    }
 
     if (sale) {
       const [kind, cards] = sale;
-      await active.getByRole('button', { name: 'Sell goods' }).click();
       for (const card of cards) {
-        await active
-          .getByRole('button', { name: `Select ${kind} ${card.id} for sale` })
-          .click();
+        await active.locator(`.hand [data-card-id="${card.id}"]`).click();
       }
-      await active.getByRole('button', { name: `Sell ${cards.length} ${kind}` }).click();
+      await active.locator(`.token.${kind.toLowerCase()}`).click();
     } else {
       const camels = active.getByRole('button', { name: /^Take all \d+ camels$/ });
       if (await camels.count()) {
-        await camels.click();
+        await camels.first().click();
       } else {
-        const marketGood = active.locator('.market button').first();
+        const marketGood = active.locator('.market .card-action:not(.camel)').first();
         if (!(await marketGood.count())) {
           throw new Error(`No legal ordinary UI action found on action ${action + 1}`);
         }
@@ -53,7 +58,7 @@ export async function playRoundToCompletion(
       }
     }
     active = active === host ? rival : host;
-    await expect(active.locator('.turn-actions, .score-review').first()).toBeVisible();
+    await expect(active.locator('.market .card-action, .score-review').first()).toBeVisible();
   }
   throw new Error(`Round did not finish within ${limit} ordinary UI actions`);
 }
