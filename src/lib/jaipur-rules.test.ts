@@ -57,3 +57,21 @@ describe('taking one good', () => {
     expect(cardCount(after.round!)).toBe(55);
   });
 });
+
+describe('taking camels', () => {
+  it('takes every market camel into the herd and refills every vacancy', () => {
+    const round = setupRound(['a', 'b'], 'camel-day', 'a');
+    const camelCount = round.market.filter(({ kind }) => kind === 'camel').length;
+    const herdBefore = round.herds.a.length;
+    const deckBefore = round.deck.length;
+    round.market = round.market.filter(({ kind }) => kind !== 'camel');
+    round.herds.a.push(...Array.from({ length: camelCount }, (_, index) => ({
+      id: `taken-${index}`,
+      kind: 'camel' as const
+    })));
+    while (round.market.length < 5) round.market.push(round.deck.shift()!);
+    expect(round.herds.a).toHaveLength(herdBefore + camelCount);
+    expect(round.deck).toHaveLength(deckBefore - camelCount);
+    expect(round.market).toHaveLength(5);
+  });
+});

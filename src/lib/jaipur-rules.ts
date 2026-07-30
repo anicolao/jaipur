@@ -204,6 +204,23 @@ export function reduceGame(events: GameEvent[]): GameState {
       round.activeUid =
         lobby.players.find(({ uid }) => uid !== event.actorUid)?.uid ?? round.activeUid;
       round.turnNumber += 1;
+      continue;
+    }
+
+    if (event.type === 'cards/taken-camels') {
+      const camels = round.market.filter(({ kind }) => kind === 'camel');
+      if (event.actorUid !== round.activeUid || camels.length === 0) {
+        lobby.diagnostics.push(`${event.id}: invalid camel take`);
+        continue;
+      }
+      round.market = round.market.filter(({ kind }) => kind !== 'camel');
+      round.herds[event.actorUid].push(...camels);
+      while (round.market.length < 5 && round.deck.length > 0) {
+        round.market.push(round.deck.shift()!);
+      }
+      round.activeUid =
+        lobby.players.find(({ uid }) => uid !== event.actorUid)?.uid ?? round.activeUid;
+      round.turnNumber += 1;
     }
   }
   return { ...lobby, round };

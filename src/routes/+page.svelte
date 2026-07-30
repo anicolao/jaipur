@@ -126,6 +126,21 @@
     }
   }
 
+  async function takeCamels() {
+    if (!repository || lobby.round?.activeUid !== uid) return;
+    busy = true;
+    try {
+      await repository.append('cards/taken-camels', {
+        roundNumber: lobby.round.number,
+        turnNumber: lobby.round.turnNumber
+      });
+    } catch (error) {
+      showError(error);
+    } finally {
+      busy = false;
+    }
+  }
+
   const cardLabel = (kind: string) => kind[0].toUpperCase() + kind.slice(1);
 </script>
 
@@ -212,6 +227,11 @@
           <div><span>Deck</span><strong>{lobby.round.deck.length}</strong></div>
         </header>
         <h2>Market</h2>
+        {#if lobby.round.activeUid === uid && lobby.round.market.some((card) => card.kind === 'camel')}
+          <button class="take-camels" type="button" disabled={busy} onclick={takeCamels}>
+            Take all {lobby.round.market.filter((card) => card.kind === 'camel').length} camels
+          </button>
+        {/if}
         <div class="cards market">
           {#each lobby.round.market as card}
             {#if card.kind !== 'camel' && lobby.round.activeUid === uid && (lobby.round.hands[uid]?.length ?? 0) < 7}
@@ -390,6 +410,7 @@
   }
   .table header div { display: grid; }
   .table h2 { margin: 1rem 0 0.5rem; font: 700 1.8rem 'Cormorant Garamond', serif; }
+  .take-camels { margin: 0 0 0.65rem; }
   .cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.55rem; }
   .cards article, .cards .card-action {
     min-height: 7.5rem;
