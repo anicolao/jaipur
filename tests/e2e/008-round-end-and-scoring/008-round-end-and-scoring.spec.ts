@@ -20,6 +20,7 @@ test('a production-size round scores and resets for its loser', async ({ browser
   const winner = (await page.locator('.scorecards article.winner h3').textContent()) ?? '';
   const loser =
     (await page.locator('.scorecards article:not(.winner) h3').textContent()) ?? '';
+  await page.evaluate(() => window.scrollTo(0, 0));
 
   await steps.step('round-scored', {
     description: `The round ends and reveals its score after ${actionCount} ordinary actions`,

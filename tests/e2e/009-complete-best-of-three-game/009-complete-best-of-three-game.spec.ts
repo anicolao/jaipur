@@ -24,6 +24,7 @@ test('a complete best-of-three match ends at two seals and rematches', async ({ 
     if (await page.locator('.match-winner').count()) break;
     await page.getByRole('button', { name: `Open round ${completedRounds + 1}` }).click();
   }
+  await page.evaluate(() => window.scrollTo(0, 0));
 
   await steps.step('match-won', {
     description: `The match ends after ${completedRounds} rounds and ${actionCount} ordinary actions`,
