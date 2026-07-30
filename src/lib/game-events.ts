@@ -52,8 +52,14 @@ function nameFrom(event: GameEvent): string | null {
 
 export function reduceLobby(events: GameEvent[]): LobbyState {
   const state: LobbyState = structuredClone(EMPTY_LOBBY);
+  const seenIds = new Set<string>();
 
   for (const event of events) {
+    if (seenIds.has(event.id)) {
+      state.diagnostics.push(`${event.id}: duplicate event ID`);
+      continue;
+    }
+    seenIds.add(event.id);
     if (
       event.schemaVersion !== SCHEMA_VERSION ||
       event.reducerVersion !== REDUCER_VERSION

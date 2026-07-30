@@ -1,11 +1,8 @@
 # Jaipur
 
-This repository is the documentation-first starting point for a realtime,
-browser-based implementation of Jaipur, the two-player trading card game by
-Sébastien Pauchon.
-
-No application code exists yet. The intended first implementation follows the
-same approach as the sibling `rebelprincess` project: a static SvelteKit client,
+This repository contains a realtime, browser-based implementation of Jaipur,
+the two-player trading card game by Sébastien Pauchon. It follows the same
+architecture as the sibling `rebelprincess` project: a static SvelteKit client,
 anonymous Firebase rooms, an append-only Firestore event stream, deterministic
 replay, and browser-level tracer bullets verified with Playwright.
 
@@ -13,7 +10,7 @@ See [RULES.md](RULES.md) for the implementation-oriented rules summary and
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the proposed architecture,
 commit contract, and vertical-slice sequence.
 
-## Intended product
+## Product
 
 - Exactly two players per game.
 - Private hands and bonus values in the trustworthy UI.
@@ -23,7 +20,7 @@ commit contract, and vertical-slice sequence.
 - Reconnect and replay from the complete immutable event history.
 - Keyboard-, touch-, phone-, tablet-, and desktop-friendly play.
 
-## Planned technical foundation
+## Technical foundation
 
 - SvelteKit, TypeScript, Bun, and `@sveltejs/adapter-static`.
 - Firebase anonymous Authentication and Cloud Firestore.
@@ -41,18 +38,32 @@ order, herds, and bonus-token order—will be readable by both authenticated
 clients. The normal client will enforce legal actions and reveal only the
 information appropriate to its player.
 
-## Development status
+## Development
 
-The initial milestone is documentation-only. The first implementation slice
-will add the application shell, Nix/Bun environment, Firebase emulator setup,
-test harness, verification script, and deployment workflow together.
+The complete rules loop is implemented: two traders can create and join a
+room, play deterministic rounds through every take, exchange, and sale action,
+score seals, complete a best-of-three match, and rematch. The client caches the
+immutable event stream for immediate replay, recovers after network loss, and
+surfaces stale, conflicting, or incompatible events without applying them.
 
-Once that slice exists, the expected local contract will be:
+Install dependencies and run the same verification contract used by the Git
+hooks and CI:
 
 ```sh
-nix develop --command bun install
+bun install --frozen-lockfile
+bun run verify:change
+```
+
+The Nix shell provides the pinned toolchain when Nix is available:
+
+```sh
 nix develop --command bun run verify:change
 ```
+
+The verifier runs static checks, unit and Firestore Rules tests, every
+two-browser Playwright scenario against the Firebase emulators, the production
+build, and whitespace checks. Scenario walkthroughs and their zero-pixel
+screenshots live under `tests/e2e/`.
 
 ## Firebase
 

@@ -1,6 +1,8 @@
 import {
   collection,
+  disableNetwork,
   doc,
+  enableNetwork,
   onSnapshot,
   serverTimestamp,
   setDoc,
@@ -29,8 +31,11 @@ export interface GameRepository {
   append: (type: GameEventType, payload: Record<string, unknown>) => Promise<void>;
   subscribe: (
     onEvents: (events: GameEvent[]) => void,
-    onError: (error: Error) => void
+    onError: (error: Error) => void,
+    onStatus?: (status: 'offline' | 'syncing' | 'synced') => void
   ) => Unsubscribe;
+  disconnect: () => Promise<void>;
+  reconnect: () => Promise<void>;
 }
 
 export function createGameRepository(
@@ -40,6 +45,7 @@ export function createGameRepository(
 ): GameRepository {
   const stream = collection(db, 'games', gameId, 'events');
   const sequenceKey = `jaipur:${gameId}:${actorUid}:client-seq`;
+  const cacheKey = `jaipur:${gameId}:event-cache:v1`;
   let pending: GameEvent[] = [];
   let remote: GameEvent[] = [];
   let notify: ((events: GameEvent[]) => void) | undefined;
@@ -83,10 +89,21 @@ export function createGameRepository(
       }
     },
 
-    subscribe(onEvents, onError) {
+    subscribe(onEvents, onError, onStatus) {
       notify = onEvents;
+      try {
+        const cached = JSON.parse(localStorage.getItem(cacheKey) ?? '[]') as GameEvent[];
+        if (Array.isArray(cached) && cached.length > 0) {
+          remote = cached;
+          onEvents(ordered());
+          onStatus?.('syncing');
+        }
+      } catch {
+        localStorage.removeItem(cacheKey);
+      }
       return onSnapshot(
         stream,
+        { includeMetadataChanges: true },
         (snapshot) => {
           remote = snapshot.docs
             .map((snapshotDocument): GameEvent => {
@@ -104,10 +121,27 @@ export function createGameRepository(
             });
           const remoteIds = new Set(remote.map(({ id }) => id));
           pending = pending.filter(({ id }) => !remoteIds.has(id));
+          localStorage.setItem(cacheKey, JSON.stringify(remote));
+          localStorage.setItem(`${cacheKey}:cursor`, remote.at(-1)?.id ?? '');
           onEvents(ordered());
+          onStatus?.(
+            snapshot.metadata.fromCache
+              ? 'offline'
+              : snapshot.metadata.hasPendingWrites
+                ? 'syncing'
+                : 'synced'
+          );
         },
         (error) => onError(error)
       );
+    },
+
+    async disconnect() {
+      await disableNetwork(db);
+    },
+
+    async reconnect() {
+      await enableNetwork(db);
     }
   };
 }

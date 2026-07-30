@@ -1,4 +1,10 @@
-import { reduceLobby, type GameEvent, type LobbyState } from './game-events';
+import {
+  REDUCER_VERSION,
+  SCHEMA_VERSION,
+  reduceLobby,
+  type GameEvent,
+  type LobbyState
+} from './game-events';
 
 export type Good = 'diamond' | 'gold' | 'silver' | 'cloth' | 'spice' | 'leather';
 export type CardKind = Good | 'camel';
@@ -284,7 +290,16 @@ export function reduceGame(events: GameEvent[]): GameState {
     if (seals[resolution.winnerUid] >= 2) winnerUid = resolution.winnerUid;
   };
 
+  const seenIds = new Set<string>();
   for (const event of events) {
+    if (seenIds.has(event.id)) continue;
+    seenIds.add(event.id);
+    if (
+      event.schemaVersion !== SCHEMA_VERSION ||
+      event.reducerVersion !== REDUCER_VERSION
+    ) {
+      continue;
+    }
     if (event.type === 'game/rematched') {
       if (event.actorUid !== lobby.hostUid || !winnerUid) {
         lobby.diagnostics.push(`${event.id}: invalid rematch`);
@@ -330,6 +345,16 @@ export function reduceGame(events: GameEvent[]): GameState {
       if (event.type.startsWith('cards/')) {
         lobby.diagnostics.push(`${event.id}: action after round end`);
       }
+      continue;
+    }
+    if (
+      event.type.startsWith('cards/') &&
+      ((event.payload.roundNumber !== undefined &&
+        event.payload.roundNumber !== round.number) ||
+        (event.payload.turnNumber !== undefined &&
+          event.payload.turnNumber !== round.turnNumber))
+    ) {
+      lobby.diagnostics.push(`${event.id}: stale round or turn`);
       continue;
     }
     if (event.type === 'cards/taken-one') {

@@ -15,7 +15,9 @@
     type Good
   } from '$lib/jaipur-rules';
 
-  let status = $state<'connecting' | 'synced' | 'error'>('connecting');
+  let status = $state<
+    'connecting' | 'syncing' | 'synced' | 'offline' | 'conflict' | 'incompatible' | 'error'
+  >('connecting');
   let statusText = $state('Connecting to Firebase…');
   let uid = $state('');
   let requestedGameId = $state('');
@@ -30,6 +32,7 @@
   let saleMode = $state(false);
   let saleKind = $state<Good | null>(null);
   let selectedSale = $state<string[]>([]);
+  let requestedOffline = $state(false);
   const goods: Good[] = ['diamond', 'gold', 'silver', 'cloth', 'spice', 'leather'];
 
   onMount(async () => {
@@ -67,10 +70,34 @@
     attached.subscribe(
       (events) => {
         lobby = reduceGame(events);
-        status = 'synced';
-        statusText = 'Game synced';
+        if (lobby.diagnostics.some((diagnostic) => diagnostic.includes('incompatible version'))) {
+          status = 'incompatible';
+          statusText = 'This game contains an incompatible protocol version';
+        } else if (lobby.diagnostics.length > 0) {
+          status = 'conflict';
+          statusText = `${lobby.diagnostics.length} conflicting event${lobby.diagnostics.length === 1 ? '' : 's'} ignored`;
+        } else if (status === 'conflict' || status === 'incompatible') {
+          status = 'syncing';
+          statusText = 'Synchronizing game…';
+        }
       },
-      showError
+      showError,
+      (repositoryStatus) => {
+        if (repositoryStatus === 'offline' && requestedOffline) {
+          status = 'offline';
+          statusText = 'Offline — showing cached game';
+          return;
+        }
+        if (status === 'conflict' || status === 'incompatible') return;
+        status =
+          repositoryStatus === 'offline' && !requestedOffline ? 'syncing' : repositoryStatus;
+        statusText =
+          status === 'offline'
+            ? 'Offline — showing cached game'
+            : status === 'syncing'
+              ? 'Synchronizing game…'
+              : 'Game synced';
+      }
     );
     return attached;
   }
@@ -147,6 +174,20 @@
     } finally {
       busy = false;
     }
+  }
+
+  async function goOffline() {
+    if (!repository) return;
+    requestedOffline = true;
+    await repository.disconnect();
+  }
+
+  async function reconnect() {
+    if (!repository) return;
+    requestedOffline = false;
+    status = 'syncing';
+    statusText = 'Synchronizing game…';
+    await repository.reconnect();
   }
 
   async function takeOne(cardId: string) {
@@ -601,7 +642,26 @@
       </section>
     {/if}
 
-    <p role="status" data-status={status}>{statusText}</p>
+    {#if repository}
+      <div class="connection-actions">
+        {#if status === 'offline'}
+          <button class="secondary" type="button" onclick={reconnect}>Reconnect</button>
+        {:else}
+          <button class="secondary" type="button" onclick={goOffline}>Work offline</button>
+        {/if}
+      </div>
+    {/if}
+    <p role={status === 'incompatible' ? 'alert' : 'status'} data-status={status}>{statusText}</p>
+    {#if lobby.diagnostics.length > 0}
+      <details class="diagnostics">
+        <summary>Replay diagnostics ({lobby.diagnostics.length})</summary>
+        <ul>
+          {#each lobby.diagnostics as diagnostic}
+            <li>{diagnostic}</li>
+          {/each}
+        </ul>
+      </details>
+    {/if}
     <p class="build" data-testid="build-marker">Build {import.meta.env.VITE_GIT_HASH ?? 'local'}</p>
   </section>
 </main>
@@ -727,7 +787,22 @@
   }
   [role='status'] { margin: 0; font-weight: 700; }
   [data-status='synced'] { color: #236142; }
-  [data-status='error'] { color: #a3212a; }
+  [data-status='offline'], [data-status='syncing'] { color: #725217; }
+  [data-status='conflict'], [data-status='incompatible'], [data-status='error'] { color: #a3212a; }
+  .connection-actions { margin: 1rem 0 0.5rem; }
+  .diagnostics {
+    max-width: 36rem;
+    margin: 0.5rem auto;
+    color: #7d2525;
+    text-align: left;
+  }
+  .diagnostics ul { margin: 0.4rem 0; padding-left: 1.2rem; }
+  .diagnostics li {
+    display: list-item;
+    padding: 0.15rem;
+    border: 0;
+    list-style: disc;
+  }
   .build { margin: 0.55rem 0 0; color: #5f6f69; font-size: 0.875rem; }
   .table { text-align: left; }
   .table header {

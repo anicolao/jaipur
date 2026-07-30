@@ -34,7 +34,7 @@ export class TestStepHelper {
     options: { description: string; verifications: Verification[]; status?: string }
   ) {
     for (const verification of options.verifications) await verification.check();
-    await expect(this.page.locator('[role="status"][data-status]')).toHaveAttribute(
+    await expect(this.page.locator('[data-status]')).toHaveAttribute(
       'data-status',
       options.status ?? 'synced'
     );

@@ -239,3 +239,70 @@ describe('round termination and scoring', () => {
     });
   });
 });
+
+describe('replay conflicts and versions', () => {
+  const event = (
+    id: string,
+    type: GameEvent['type'],
+    actorUid: string,
+    payload: Record<string, unknown>,
+    schemaVersion = 1
+  ): GameEvent => ({
+    id,
+    type,
+    actorUid,
+    payload,
+    clientSeq: Number(id.match(/\d+/)?.[0] ?? 1),
+    createdAtMillis: 1,
+    schemaVersion,
+    reducerVersion: 1
+  });
+  const setupEvents = () => [
+    event('a-1', 'game/created', 'a', { gameId: 'replay', displayName: 'A' }),
+    event('b-1', 'player/joined', 'b', { displayName: 'B' }),
+    event('a-2', 'player/ready', 'a', { ready: true }),
+    event('b-2', 'player/ready', 'b', { ready: true }),
+    event('a-3', 'round/started', 'a', { seed: 'replay', starterUid: 'a' })
+  ];
+
+  it('applies a duplicate event ID once and records a deterministic diagnostic', () => {
+    const setup = setupEvents();
+    const card = legalSingleGoods(reduceGame(setup).round!, 'a')[0];
+    const action = event('a-4', 'cards/taken-one', 'a', {
+      cardId: card.id,
+      roundNumber: 1,
+      turnNumber: 1
+    });
+    const replayed = reduceGame([...setup, action, action]);
+    expect(replayed.round?.turnNumber).toBe(2);
+    expect(replayed.diagnostics).toContain('a-4: duplicate event ID');
+  });
+
+  it('ignores stale concurrent actions and incompatible versions without partial mutation', () => {
+    const setup = setupEvents();
+    const goods = legalSingleGoods(reduceGame(setup).round!, 'a');
+    const applied = event('a-4', 'cards/taken-one', 'a', {
+      cardId: goods[0].id,
+      roundNumber: 1,
+      turnNumber: 1
+    });
+    const stale = event('a-5', 'cards/taken-one', 'a', {
+      cardId: goods[1].id,
+      roundNumber: 1,
+      turnNumber: 1
+    });
+    const incompatible = event(
+      'b-6',
+      'cards/taken-one',
+      'b',
+      { cardId: goods[1].id, roundNumber: 1, turnNumber: 2 },
+      99
+    );
+    const replayed = reduceGame([...setup, applied, stale, incompatible]);
+    expect(replayed.round?.turnNumber).toBe(2);
+    expect(replayed.round?.hands.a).toContainEqual(goods[0]);
+    expect(replayed.round?.hands.b).not.toContainEqual(goods[1]);
+    expect(replayed.diagnostics).toContain('a-5: stale round or turn');
+    expect(replayed.diagnostics).toContain('b-6: incompatible version');
+  });
+});
