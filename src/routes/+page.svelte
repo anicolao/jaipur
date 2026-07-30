@@ -110,6 +110,22 @@
     }
   }
 
+  async function takeOne(cardId: string) {
+    if (!repository || lobby.round?.activeUid !== uid) return;
+    busy = true;
+    try {
+      await repository.append('cards/taken-one', {
+        cardId,
+        roundNumber: lobby.round.number,
+        turnNumber: lobby.round.turnNumber
+      });
+    } catch (error) {
+      showError(error);
+    } finally {
+      busy = false;
+    }
+  }
+
   const cardLabel = (kind: string) => kind[0].toUpperCase() + kind.slice(1);
 </script>
 
@@ -198,10 +214,24 @@
         <h2>Market</h2>
         <div class="cards market">
           {#each lobby.round.market as card}
-            <article class:camel={card.kind === 'camel'} data-card-id={card.id}>
-              <span>{cardLabel(card.kind)}</span>
-              <small>{card.id}</small>
-            </article>
+            {#if card.kind !== 'camel' && lobby.round.activeUid === uid && (lobby.round.hands[uid]?.length ?? 0) < 7}
+              <button
+                class="card-action"
+                type="button"
+                disabled={busy}
+                aria-label={`Take ${cardLabel(card.kind)}`}
+                data-card-id={card.id}
+                onclick={() => takeOne(card.id)}
+              >
+                <span>{cardLabel(card.kind)}</span>
+                <small>{card.id}</small>
+              </button>
+            {:else}
+              <article class:camel={card.kind === 'camel'} data-card-id={card.id}>
+                <span>{cardLabel(card.kind)}</span>
+                <small>{card.id}</small>
+              </article>
+            {/if}
           {/each}
         </div>
         <div class="opponent">
@@ -361,7 +391,7 @@
   .table header div { display: grid; }
   .table h2 { margin: 1rem 0 0.5rem; font: 700 1.8rem 'Cormorant Garamond', serif; }
   .cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.55rem; }
-  .cards article {
+  .cards article, .cards .card-action {
     min-height: 7.5rem;
     display: flex;
     flex-direction: column;
@@ -372,7 +402,10 @@
     background: #fffaf0;
     color: #183a37;
     font-weight: 700;
+    text-align: left;
   }
+  .cards .card-action { cursor: pointer; }
+  .cards .card-action:hover { transform: translateY(-2px); box-shadow: 0 0.4rem 0.8rem rgb(49 95 88 / 18%); }
   .cards article.camel { border-color: #a23e2a; background: #f7d69f; }
   .cards small { color: #66746e; font-size: 0.7rem; }
   .opponent {
@@ -390,7 +423,7 @@
     li { grid-template-columns: auto 1fr; }
     li > :last-child { grid-column: 2; }
     .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .cards article { min-height: 5.5rem; padding: 0.45rem; }
+    .cards article, .cards .card-action { min-height: 5.5rem; padding: 0.45rem; }
     .opponent { flex-wrap: wrap; }
   }
 </style>

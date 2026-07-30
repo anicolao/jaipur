@@ -31,10 +31,10 @@ test('ready traders receive a deterministic private deal', async ({ browser, pag
       {
         spec: 'Both players see the same five-card market',
         check: async () => {
-          await expect(page.locator('.market article')).toHaveCount(5);
-          await expect(rival.locator('.market article')).toHaveCount(5);
-          expect(await page.locator('.market article').allTextContents()).toEqual(
-            await rival.locator('.market article').allTextContents()
+          await expect(page.locator('.market').locator('article, button')).toHaveCount(5);
+          await expect(rival.locator('.market').locator('article, button')).toHaveCount(5);
+          expect(await page.locator('.market').locator('article, button').allTextContents()).toEqual(
+            await rival.locator('.market').locator('article, button').allTextContents()
           );
         }
       },

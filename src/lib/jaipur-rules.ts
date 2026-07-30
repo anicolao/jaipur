@@ -16,6 +16,7 @@ export interface Token {
 
 export interface RoundState {
   number: number;
+  turnNumber: number;
   seed: string;
   activeUid: string;
   deck: Card[];
@@ -141,6 +142,7 @@ export function setupRound(playerUids: string[], seed: string, activeUid: string
 
   return {
     number: 1,
+    turnNumber: 1,
     seed,
     activeUid,
     deck,
@@ -157,26 +159,59 @@ export function reduceGame(events: GameEvent[]): GameState {
   const lobby = reduceLobby(events);
   let round: RoundState | null = null;
   for (const event of events) {
-    if (event.type !== 'round/started' || round) continue;
-    const seed = event.payload.seed;
-    const starterUid = event.payload.starterUid;
-    if (
-      event.actorUid !== lobby.hostUid ||
-      lobby.players.length !== 2 ||
-      !lobby.players.every(({ ready }) => ready) ||
-      typeof seed !== 'string' ||
-      typeof starterUid !== 'string'
-    ) {
-      lobby.diagnostics.push(`${event.id}: invalid round start`);
+    if (event.type === 'round/started') {
+      if (round) continue;
+      const seed = event.payload.seed;
+      const starterUid = event.payload.starterUid;
+      if (
+        event.actorUid !== lobby.hostUid ||
+        lobby.players.length !== 2 ||
+        !lobby.players.every(({ ready }) => ready) ||
+        typeof seed !== 'string' ||
+        typeof starterUid !== 'string'
+      ) {
+        lobby.diagnostics.push(`${event.id}: invalid round start`);
+        continue;
+      }
+      round = setupRound(
+        lobby.players.map(({ uid }) => uid),
+        seed,
+        starterUid
+      );
       continue;
     }
-    round = setupRound(
-      lobby.players.map(({ uid }) => uid),
-      seed,
-      starterUid
-    );
+
+    if (!round) continue;
+    if (event.type === 'cards/taken-one') {
+      const cardId = event.payload.cardId;
+      const hand = round.hands[event.actorUid];
+      const marketIndex = round.market.findIndex(({ id }) => id === cardId);
+      if (
+        event.actorUid !== round.activeUid ||
+        typeof cardId !== 'string' ||
+        marketIndex < 0 ||
+        round.market[marketIndex].kind === 'camel' ||
+        !hand ||
+        hand.length >= 7
+      ) {
+        lobby.diagnostics.push(`${event.id}: invalid single-good take`);
+        continue;
+      }
+      const [card] = round.market.splice(marketIndex, 1);
+      hand.push(card);
+      const replacement = round.deck.shift();
+      if (replacement) round.market.splice(marketIndex, 0, replacement);
+      round.activeUid =
+        lobby.players.find(({ uid }) => uid !== event.actorUid)?.uid ?? round.activeUid;
+      round.turnNumber += 1;
+    }
   }
   return { ...lobby, round };
+}
+
+export function legalSingleGoods(round: RoundState, uid: string): Card[] {
+  if (round.activeUid !== uid || round.hands[uid]?.length >= 7) return [];
+  return round.market.filter(({ kind }) => kind !== 'camel');
 }
 
 export function cardCount(round: RoundState): number {
