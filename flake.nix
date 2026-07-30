@@ -13,7 +13,9 @@
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [ bun git jdk ];
           shellHook = ''
-            export XDG_CACHE_HOME="''${TMPDIR:-/tmp}/jaipur-firebase-cache"
+            # Keep downloaded browser and Firebase artifacts stable across
+            # separate `nix develop --command` invocations in CI.
+            export XDG_CACHE_HOME="$PWD/.firebase/cache"
           '';
         };
       });
