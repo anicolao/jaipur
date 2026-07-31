@@ -1354,6 +1354,16 @@
                   {:else}
                     <span class="empty-token-stack">—</span>
                   {/each}
+                  {#if lobby.round.goodsTokens[kind].length > 0}
+                    <span
+                      class="supply-edge-values"
+                      style={`--edge-count: ${lobby.round.goodsTokens[kind].length}`}
+                    >
+                      {#each lobby.round.goodsTokens[kind] as token}
+                        <span class="supply-edge-value">{token.value}</span>
+                      {/each}
+                    </span>
+                  {/if}
                 </span>
                 <span class="token-supply-count">{lobby.round.goodsTokens[kind].length} left</span>
               </button>
@@ -2565,6 +2575,41 @@
     width: var(--supply-chip-size);
     height: var(--supply-chip-size);
     transform: none;
+  }
+  .supply-token :global(.token-chip-rim) {
+    display: none;
+  }
+  .supply-edge-values {
+    position: absolute;
+    z-index: 100;
+    top: calc(var(--supply-chip-size) - 0.8rem);
+    left: 50%;
+    display: grid;
+    width: min(100%, calc(var(--edge-count) * 0.85rem));
+    height: 0.92rem;
+    grid-template-columns: repeat(var(--edge-count), minmax(0, 1fr));
+    filter: drop-shadow(0 0.08rem 0.08rem rgb(24 58 55 / 34%));
+    pointer-events: none;
+    transform: translateX(-50%);
+  }
+  .supply-edge-value {
+    display: grid;
+    min-width: 0;
+    place-items: center;
+    border-block: 1px solid #183a37;
+    border-left: 1px solid #183a37;
+    background: #f8e7b7;
+    color: #183a37;
+    font-size: 0.9rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .supply-edge-value:first-child {
+    border-radius: 0.45rem 0 0 0.45rem;
+  }
+  .supply-edge-value:last-child {
+    border-right: 1px solid #183a37;
+    border-radius: 0 0.45rem 0.45rem 0;
   }
   .empty-token-stack {
     display: grid;
