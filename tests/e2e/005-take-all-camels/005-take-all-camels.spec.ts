@@ -16,7 +16,7 @@ test('the active trader takes every camel as one action', async ({ browser, page
   );
 
   const camelCount = await page.locator('.market .camel').count();
-  const herdBefore = await page.locator('.own-herd .camel-pile img').count();
+  const herdBefore = await page.locator('.own-herd .own-camel-card').count();
   const deckBefore = Number(await page.getByText('Deck').locator('..').locator('strong').textContent());
   await page
     .getByRole('button', { name: new RegExp(`Take all ${camelCount} camels`) })
@@ -29,8 +29,11 @@ test('the active trader takes every camel as one action', async ({ browser, page
       {
         spec: 'The local herd stack grows by the complete visible camel group',
         check: async () => {
-          await expect(page.locator('.own-herd .camel-pile img')).toHaveCount(
+          await expect(page.locator('.own-herd .own-camel-card')).toHaveCount(
             herdBefore + camelCount
+          );
+          await expect(page.locator('.own-herd-label strong')).toHaveText(
+            `${herdBefore + camelCount} camels`
           );
           await expect(rival.locator('.opponent-herd .camel-pile img')).toHaveCount(
             herdBefore + camelCount
