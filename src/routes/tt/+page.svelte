@@ -291,10 +291,6 @@
     ];
   }
 
-  function tokenTotal(uid: string): number {
-    return ownedTokens(uid).reduce((total, token) => total + token.value, 0);
-  }
-
   async function nextRound() {
     if (!repository || !lobby.round || lobby.round.status !== 'complete' || lobby.winnerUid) return;
     await repository.append('round/started', {
@@ -533,12 +529,7 @@
         <span>Herd</span>
       </div>
       <div class="seat-tokens" data-table-tokens={player.uid}>
-        <span class="earned-chip-row" aria-hidden="true">
-          {#each ownedTokens(player.uid).slice(-6) as token}
-            <TokenChip {token} />
-          {/each}
-        </span>
-        <span><strong>{ownedTokens(player.uid).length}</strong> tokens · {tokenTotal(player.uid)} points</span>
+        <span><strong>{ownedTokens(player.uid).length}</strong> {ownedTokens(player.uid).length === 1 ? 'token' : 'tokens'}</span>
       </div>
     </div>
     <footer aria-live="polite">
@@ -717,7 +708,7 @@
       class="table-token-flight"
       aria-hidden="true"
       style={`--start-left:${flight.startLeft}px;--start-top:${flight.startTop}px;--start-size:${flight.startSize}px;--end-left:${flight.endLeft}px;--end-top:${flight.endTop}px;--end-size:${flight.endSize}px;--flight-delay:${flight.delay}ms`}
-    ><TokenChip token={flight.token} /></span>
+    ><TokenChip token={flight.token} hidden={flight.token.kind.startsWith('bonus-')} /></span>
   {/each}
 </main>
 
@@ -830,9 +821,7 @@
   }
   .herd-pile { position: relative; width: 6.8rem; height: clamp(3.7rem, 9.8vh, 6rem); }
   .herd-pile img { position: absolute; left: calc(var(--pile-index) * 0.55rem); width: clamp(3.7rem, 9.8vh, 6rem); height: clamp(3.7rem, 9.8vh, 6rem); border: 2px solid #a6442d; border-radius: 0.55rem; object-fit: cover; transform: rotate(calc((var(--pile-index) - 2) * 2deg)); }
-  .seat-tokens { display: grid; min-width: 0; gap: 0.15rem; font-size: clamp(0.65rem, 1.3vmin, 0.82rem); }
-  .earned-chip-row { display: flex; height: 2.5rem; align-items: center; }
-  .earned-chip-row :global(.token-chip) { width: 2.4rem; height: 2.4rem; margin-right: -0.85rem; }
+  .seat-tokens { display: grid; min-width: 0; min-height: 2.5rem; place-items: center; border: 1px solid #b7aa8d; border-radius: 99rem; background: #f5ead3; font-size: clamp(0.65rem, 1.3vmin, 0.82rem); }
   .player-seat > footer { display: flex; min-height: 2rem; align-items: center; justify-content: center; gap: 0.45rem; font-size: clamp(0.62rem, 1.2vmin, 0.78rem); text-align: center; }
   .player-seat footer button, .round-result button { min-height: 36px; padding: 0.3rem 0.65rem; border: 0; border-radius: 99rem; background: #a6442d; color: white; font-weight: 700; }
   .shared-market {

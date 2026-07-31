@@ -10,6 +10,6 @@ A neutral tabletop keeps public play on the shared screen while each QR-joined p
 
 - [x] The top player UI and its upper-left log are rotated exactly 180 degrees
 - [x] The lower player UI and lower-right log remain upright
-- [x] Private phone selections load face-down table targets and complete an exchange
+- [x] Private phone selections load face-down table targets and keep exact token values private
 - [x] Public actions use direct card flights instead of a text notification overlay
 - [x] The complete tabletop fits without document scrolling
