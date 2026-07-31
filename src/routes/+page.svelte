@@ -901,7 +901,7 @@
                         <span>{cardLabel(loadedReturn.kind)}</span>
                       </span>
                     {:else}
-                      <span class="drop-target-mark" aria-hidden="true">＋</span>
+                      <span class="drop-target-mark" aria-hidden="true"></span>
                       <span>Return card</span>
                     {/if}
                   </button>
@@ -1374,8 +1374,25 @@
     box-shadow: inset 0 0 0 2px #315f58;
   }
   .drop-target-mark {
-    font-size: 1.2rem;
-    line-height: 1;
+    position: relative;
+    width: 0.8rem;
+    height: 0.8rem;
+    flex: 0 0 0.8rem;
+  }
+  .drop-target-mark::before,
+  .drop-target-mark::after {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0.8rem;
+    height: 2px;
+    border-radius: 1px;
+    background: currentColor;
+    content: '';
+    transform: translate(-50%, -50%);
+  }
+  .drop-target-mark::after {
+    transform: translate(-50%, -50%) rotate(90deg);
   }
   .loaded-return-card.click-loaded {
     animation: click-load-return 180ms ease-out;
