@@ -946,7 +946,7 @@
     });
     actionCardFlights = [...actionCardFlights, ...flights];
     for (const flight of flights) {
-      setTimeout(() => finishActionCardFlight(flight.key), 820 + flight.delay);
+      setTimeout(() => finishActionCardFlight(flight.key), 3000 + flight.delay);
     }
   }
 
@@ -1049,7 +1049,7 @@
     });
     tokenFlights = [...tokenFlights, ...flights];
     for (const flight of flights) {
-      setTimeout(() => finishTokenFlight(flight.key), 720 + flight.delay);
+      setTimeout(() => finishTokenFlight(flight.key), 3000 + flight.delay);
     }
   }
 
