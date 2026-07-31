@@ -106,6 +106,37 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   await expect(page.locator('[data-seat="1"] .turn-state')).toHaveText('Your turn');
   await expect(page.locator('.table-card-flight, .table-token-flight')).toHaveCount(0, { timeout: 3000 });
 
+  const saleCard = firstPhone.getByRole('button', {
+    name: /^Select (Cloth|Spice|Leather) /
+  }).first();
+  await expect(saleCard).toBeVisible();
+  const saleKind = (await saleCard.getAttribute('aria-label'))
+    ?.match(/^Select (Cloth|Spice|Leather) /)?.[1]
+    ?.toLowerCase();
+  expect(saleKind).toBeTruthy();
+  await saleCard.click();
+  await expect(firstPhone.locator('.selection-summary strong')).toHaveText('1 selected for the table');
+  await page.locator(`[data-token-kind="${saleKind}"]`).click();
+  await expect(page.locator('.table-token-flight').first()).toBeVisible();
+  await expect(page.locator('[data-seat="1"] .seat-tokens')).toHaveText('1 token');
+  await expect(page.locator('[data-seat="1"] .seat-tokens .token-chip')).toHaveCount(0);
+  await expect(page.locator('[data-seat="1"] .seat-tokens')).not.toContainText('points');
+  await expect(firstPhone.locator('[data-private-token-tray]')).toContainText(/1 worth \d+ points/);
+  await expect(firstPhone.locator('[data-private-token-tray] .token-chip')).toHaveCount(1);
+  const privateTokenValue = await firstPhone
+    .locator('[data-private-token-tray] .token-chip-center')
+    .textContent();
+  await expect(firstPhone.locator('[data-private-token-tray]'))
+    .toContainText(`1 worth ${privateTokenValue} points`);
+  await expect.poll(() => firstPhone.evaluate(() => ({
+    width: document.documentElement.scrollWidth,
+    height: document.documentElement.scrollHeight,
+    viewportWidth: innerWidth,
+    viewportHeight: innerHeight
+  }))).toEqual({ width: 393, height: 852, viewportWidth: 393, viewportHeight: 852 });
+  await expect(page.locator('[data-seat="2"] .turn-state')).toHaveText('Your turn');
+  await expect(page.locator('.table-card-flight, .table-token-flight')).toHaveCount(0, { timeout: 3000 });
+
   // Keep the visual baseline stable after separately proving that every load gets a fresh code.
   await tableCode.evaluate((element) => element.textContent = 'TABLE');
 
@@ -130,11 +161,14 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
         }
       },
       {
-        spec: 'Private phone selections load face-down table targets and complete an exchange',
+        spec: 'Private phone selections load face-down table targets and keep exact token values private',
         check: async () => {
-          await expect(page.locator('[data-seat="1"] .turn-state')).toHaveText('Your turn');
+          await expect(page.locator('[data-seat="2"] .turn-state')).toHaveText('Your turn');
           await expect(page.locator('.market-card')).toHaveCount(5);
-          await expect(page.locator('.tabletop-hand > img')).toHaveCount(privateGoodsCount + 1);
+          await expect(page.locator('.tabletop-hand > img')).toHaveCount(privateGoodsCount);
+          await expect(page.locator('[data-seat="1"] .seat-tokens')).toHaveText('1 token');
+          await expect(page.locator('[data-seat="1"] .seat-tokens')).not.toContainText('points');
+          await expect(firstPhone.locator('[data-private-token-tray]')).toContainText(/1 worth \d+ points/);
         }
       },
       {

@@ -34,7 +34,9 @@ end of the table. Both players scan the code nearest them and choose a name on
 their phones; each phone becomes a private hand controller while play opens
 automatically on the shared screen. Hands remain face-down on the table. A
 player selects private goods or camels on their phone, then taps the public
-exchange targets or token supplies on the tabletop. Player 1's
+exchange targets or token supplies on the tabletop. Earned-token counts remain
+visible on the table, while the chip faces and exact score appear only on the
+owner's phone. Player 1's
 edge and game log face the opposite side of the table, Player 2's face the
 near side, and either player performs their turn directly on the tabletop.
 

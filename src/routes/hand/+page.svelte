@@ -5,9 +5,10 @@
   import { base } from '$app/paths';
   import { onMount } from 'svelte';
   import PieceArt from '$lib/PieceArt.svelte';
+  import TokenChip from '$lib/TokenChip.svelte';
   import { initializeFirebase } from '$lib/firebase';
   import { createGameRepository, type GameRepository } from '$lib/game-repository';
-  import { reduceGame, type Card, type GameState } from '$lib/jaipur-rules';
+  import { reduceGame, type Card, type GameState, type Token } from '$lib/jaipur-rules';
   import { isRoomCode, normalizeRoomCode } from '$lib/room-code';
 
   const buildHash = (import.meta.env.VITE_GIT_HASH ?? 'local').slice(0, 7);
@@ -28,6 +29,11 @@
   const loadedReturnIds = () => Object.values(intent().exchangeLoads);
   const selectedReturnIds = () => intent().selectedReturnIds;
   const selectedCount = () => selectedReturnIds().length;
+  const ownedTokens = (): Token[] => game.round ? [
+    ...(game.round.ownedGoodsTokens[uid] ?? []),
+    ...(game.round.ownedBonusTokens[uid] ?? [])
+  ] : [];
+  const tokenTotal = () => ownedTokens().reduce((total, token) => total + token.value, 0);
 
   onMount(async () => {
     const params = new URLSearchParams(location.search);
@@ -157,6 +163,22 @@
       </button>
     </section>
 
+    <section class="private-tokens" aria-labelledby="private-tokens-heading" data-private-token-tray>
+      <div>
+        <h2 id="private-tokens-heading">Your tokens</h2>
+        <strong>{ownedTokens().length} worth {tokenTotal()} points</strong>
+      </div>
+      {#if ownedTokens().length > 0}
+        <span class="private-earned-chip-row" aria-hidden="true">
+          {#each ownedTokens().slice(-6) as token}
+            <TokenChip {token} />
+          {/each}
+        </span>
+      {:else}
+        <span class="no-tokens">No tokens yet</span>
+      {/if}
+    </section>
+
     <section class="private-cards" aria-labelledby="private-cards-heading">
       <h2 id="private-cards-heading">Goods</h2>
       <p>Tap cards you may return or sell, then use the target or token stack on the table.</p>
@@ -242,6 +264,14 @@
   .selection-summary { display: flex; align-items: center; justify-content: space-between; gap: 0.7rem; margin: 0.75rem 0; padding: 0.65rem 0.75rem; border-radius: 0.75rem; background: #315f58; color: white; }
   .selection-summary > div { display: flex; flex-wrap: wrap; gap: 0.35rem 0.7rem; font-size: 0.78rem; }
   .selection-summary strong { width: 100%; font-size: 1rem; }
+  .private-tokens { display: grid; min-height: 3.35rem; grid-template-columns: minmax(7.5rem, auto) minmax(0, 1fr); align-items: center; gap: 0.65rem; margin-top: 0.65rem; padding: 0.4rem 0.65rem; border: 1px solid #b7aa8d; border-radius: 0.8rem; background: #fffaf0; }
+  .private-tokens > div { display: grid; gap: 0.05rem; }
+  .private-tokens h2 { font-size: 1.1rem; }
+  .private-tokens strong { font-size: 0.78rem; }
+  .private-earned-chip-row { display: flex; min-width: 0; height: 2.7rem; align-items: center; justify-content: flex-end; overflow: hidden; padding-right: 0.15rem; }
+  .private-earned-chip-row :global(.token-chip) { width: 2.55rem; height: 2.55rem; flex: 0 0 auto; margin-left: -0.72rem; }
+  .private-earned-chip-row :global(.token-chip:first-child) { margin-left: 0; }
+  .no-tokens { color: #6e756d; font-size: 0.75rem; text-align: right; }
   .private-cards, .private-herd { margin-top: 0.75rem; }
   .private-cards > p { margin: 0.15rem 0 0.55rem; font-size: 0.78rem; }
   .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(5rem, 1fr)); gap: 0.5rem; }
