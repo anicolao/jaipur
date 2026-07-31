@@ -37,7 +37,8 @@ test('ready traders receive a deterministic private deal', async ({ browser, pag
           await expect(page.locator('.market .piece-image')).toHaveCount(5);
           const handCount = await page.locator('.hand [data-card-id]').count();
           await expect(page.locator('.hand .piece-image')).toHaveCount(handCount);
-          await expect(page.locator('.token-area img')).toHaveCount(6);
+          await expect(page.locator('.token-area .supply-token')).toHaveCount(38);
+          await expect(page.locator('.token-area .bonus-supply-token')).toHaveCount(18);
           expect(await page.locator('.market .market-slot > :first-child').allTextContents()).toEqual(
             await rival.locator('.market .market-slot > :first-child').allTextContents()
           );
