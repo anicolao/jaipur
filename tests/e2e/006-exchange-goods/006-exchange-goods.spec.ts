@@ -17,15 +17,35 @@ test('the active trader exchanges market goods for herd camels', async ({ browse
   const deckBefore = await page.getByText('Deck').locator('..').locator('strong').textContent();
 
   await expect(
-    page.getByRole('button', { name: /^Exchange Camel .* for a camel/ })
+    page
+      .locator('.market-slot')
+      .filter({ has: page.locator('.camel') })
+      .locator('.exchange-drop-target')
   ).toHaveCount(0);
-  await page
-    .getByRole('button', { name: /^Exchange Diamond .* for a camel/ })
-    .click();
+  const herdStack = page.getByRole('button', {
+    name: 'Select or drag a camel from your herd for exchange'
+  });
+  const diamondDrop = page
+    .locator('.market-slot')
+    .filter({ hasText: 'Diamond' })
+    .locator('.exchange-drop-target');
+  const goldDrop = page
+    .locator('.market-slot')
+    .filter({ hasText: 'Gold' })
+    .locator('.exchange-drop-target');
+
+  await herdStack.click();
+  await expect(herdStack).toHaveAttribute('aria-pressed', 'true');
+  await diamondDrop.click();
+  await expect(diamondDrop).toHaveAccessibleName(/^Remove Camel /);
+  await expect(diamondDrop.locator('.loaded-return-card')).toHaveClass(/click-loaded/);
   await expect(page.getByRole('button', { name: 'Trade 1 for 1' })).toBeDisabled();
-  await page
-    .getByRole('button', { name: /^Exchange Gold .* for a camel/ })
-    .click();
+  await goldDrop.click();
+  await expect(page.locator('.interaction-tray p')).toContainText(
+    'Choose or drag a hand card or camel'
+  );
+  await herdStack.click();
+  await expect(goldDrop).toHaveAccessibleName(/^Remove Camel /);
   await page.getByRole('button', { name: 'Trade 2 for 2' }).click();
 
   await steps.step('exchange-complete', {
@@ -41,7 +61,8 @@ test('the active trader exchanges market goods for herd camels', async ({ browse
       {
         spec: 'The returned camels leave the herd and fill the market',
         check: async () => {
-          await expect(page.getByText('Your herd:').locator('..')).toContainText('0 camels');
+          await expect(page.locator('.own-herd .camel-pile img')).toHaveCount(0);
+          await expect(rival.locator('.opponent-herd .camel-pile img')).toHaveCount(0);
           await expect(page.locator('.market .camel')).toHaveCount(5);
         }
       },

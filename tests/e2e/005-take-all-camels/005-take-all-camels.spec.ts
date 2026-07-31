@@ -16,9 +16,7 @@ test('the active trader takes every camel as one action', async ({ browser, page
   );
 
   const camelCount = await page.locator('.market .camel').count();
-  const herdBefore = Number(
-    (await page.locator('.herd-total').textContent())?.match(/\d+/)?.[0] ?? '0'
-  );
+  const herdBefore = await page.locator('.own-herd .camel-pile img').count();
   const deckBefore = Number(await page.getByText('Deck').locator('..').locator('strong').textContent());
   await page
     .getByRole('button', { name: new RegExp(`Take all ${camelCount} camels`) })
@@ -29,9 +27,15 @@ test('the active trader takes every camel as one action', async ({ browser, page
     description: 'Every camel joins Asha’s herd',
     verifications: [
       {
-        spec: 'The local herd grows by the complete visible camel group',
-        check: async () =>
-          expect(page.locator('.herd-total')).toContainText(`${herdBefore + camelCount} camels`)
+        spec: 'The local herd stack grows by the complete visible camel group',
+        check: async () => {
+          await expect(page.locator('.own-herd .camel-pile img')).toHaveCount(
+            herdBefore + camelCount
+          );
+          await expect(rival.locator('.opponent-herd .camel-pile img')).toHaveCount(
+            herdBefore + camelCount
+          );
+        }
       },
       {
         spec: 'The market returns to five cards and the deck pays every replacement',

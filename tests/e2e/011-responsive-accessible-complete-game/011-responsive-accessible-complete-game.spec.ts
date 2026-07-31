@@ -52,13 +52,14 @@ test('the complete table is responsive and accessible by keyboard and touch', as
 
   const handCards = page.locator('.hand .hand-card');
   const draggedCard = handCards.first();
-  const diamondReturn = page.getByRole('button', {
-    name: /^Choose a hand card to exchange for Diamond/
-  });
+  const diamondReturn = page
+    .locator('.market-slot')
+    .filter({ hasText: 'Diamond' })
+    .locator('.exchange-drop-target');
   await diamondReturn.focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('.interaction-tray p')).toContainText(
-    'Choose or drag a hand card'
+    'Choose or drag a hand card or camel'
   );
   await handCards.first().focus();
   await page.keyboard.press('Space');
@@ -83,22 +84,41 @@ test('the complete table is responsive and accessible by keyboard and touch', as
   await page.mouse.up();
   await expect(diamondReturn).toHaveAttribute('aria-pressed', 'true');
 
-  const keyboardCard = handCards.nth(1);
-  await keyboardCard.focus();
-  await page.keyboard.press('Space');
-  const goldReturn = page.getByRole('button', {
-    name: /^Choose a hand card to exchange for Gold/
+  const goldReturn = page
+    .locator('.market-slot')
+    .filter({ hasText: 'Gold' })
+    .locator('.exchange-drop-target');
+  const herdStack = page.getByRole('button', {
+    name: 'Select or drag a camel from your herd for exchange'
   });
-  await goldReturn.focus();
-  await page.keyboard.press('Enter');
+  const herdBox = await herdStack.boundingBox();
+  const goldBox = await goldReturn.boundingBox();
+  expect(herdBox).not.toBeNull();
+  expect(goldBox).not.toBeNull();
+  await page.mouse.move(
+    (herdBox?.x ?? 0) + (herdBox?.width ?? 0) / 2,
+    (herdBox?.y ?? 0) + (herdBox?.height ?? 0) / 2
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    (goldBox?.x ?? 0) + (goldBox?.width ?? 0) / 2,
+    (goldBox?.y ?? 0) + (goldBox?.height ?? 0) / 2,
+    { steps: 8 }
+  );
+  await expect(herdStack).toHaveClass(/dragging/);
+  await page.mouse.up();
+  await expect(goldReturn).toHaveAttribute('aria-pressed', 'true');
+  await expect(goldReturn.locator('.loaded-return-card')).not.toHaveClass(/click-loaded/);
+
   const confirmExchange = page.getByRole('button', { name: 'Trade 2 for 2' });
-  await confirmExchange.focus();
+  await page.getByRole('button', { name: 'Clear' }).focus();
+  await page.keyboard.press('Shift+Tab');
 
   await steps.step('keyboard-exchange', {
     description: 'A direct exchange is composed by drag and drop plus keyboard routing',
     verifications: [
       {
-        spec: 'Both card-back destinations expose their loaded pressed state',
+        spec: 'Both dashed return targets expose their loaded pressed state',
         check: async () => {
           await expect(diamondReturn).toHaveAttribute('aria-pressed', 'true');
           await expect(goldReturn).toHaveAttribute('aria-pressed', 'true');
@@ -107,7 +127,7 @@ test('the complete table is responsive and accessible by keyboard and touch', as
         }
       },
       {
-        spec: 'Market and hand cards keep one square physical footprint',
+        spec: 'Market, hand, and herd cards preserve their physical footprints',
         check: async () => {
           const cardBoxes = await page
             .locator('.market .card-action, .hand .card-action')
@@ -121,6 +141,16 @@ test('the complete table is responsive and accessible by keyboard and touch', as
           for (const box of cardBoxes) {
             expect(Math.abs(box.width - box.height)).toBeLessThanOrEqual(1);
             expect(Math.abs(box.width - cardBoxes[0].width)).toBeLessThanOrEqual(1);
+          }
+          const herdCards = await page.locator('.camel-pile img').evaluateAll((cards) =>
+            cards.map((card) => {
+              const style = getComputedStyle(card);
+              return { width: parseFloat(style.width), height: parseFloat(style.height) };
+            })
+          );
+          expect(herdCards.length).toBeGreaterThan(0);
+          for (const box of herdCards) {
+            expect(Math.abs(box.width - box.height)).toBeLessThanOrEqual(1);
           }
         }
       },
@@ -171,13 +201,16 @@ test('the complete table is responsive and accessible by keyboard and touch', as
     description: 'The synchronized table exposes every state without relying on colour',
     verifications: [
       {
-        spec: 'Market, private hand, concealed opponent hand, and public supplies remain labelled',
+        spec: 'Market, private hand, public camel herds, concealed opponent hand, and supplies remain labelled',
         check: async () => {
           await expect(page.getByRole('heading', { name: 'Market' })).toBeVisible();
           await expect(page.getByRole('heading', { name: 'Your hand' })).toBeVisible();
           await expect(page.getByRole('heading', { name: 'Token supplies' })).toBeVisible();
-          await expect(page.locator('.opponent')).toContainText('Herd hidden');
           await expect(page.locator('.opponent')).toContainText('values hidden');
+          await expect(page.locator('.opponent-herd')).toHaveAccessibleName(
+            /Belen has \d+ camels in their herd/
+          );
+          await expect(page.locator('.own-herd')).toContainText('Your herd');
           await expect(page.locator('.opponent')).toContainText('2 / 7 cards');
           await expect(page.locator('.opponent-hand .opponent-card-back')).toHaveCount(2);
           await expect(page.locator('.opponent-hand')).toHaveAttribute(
