@@ -34,17 +34,23 @@
   let busy = $state(false);
   let shellOnly = $state(true);
   let exchangeLoads = $state<Record<string, string>>({});
+  let exchangeLoadModes = $state<Record<string, 'click' | 'drag'>>({});
   let activeExchangeTarget = $state<string | null>(null);
   let selectedHand = $state<string[]>([]);
-  let draggedHandCardId = $state<string | null>(null);
-  let pointerHandDrag = $state<{
+  let selectedCamelId = $state<string | null>(null);
+  let draggedReturnId = $state<string | null>(null);
+  let draggedReturnSource = $state<'hand' | 'camel' | null>(null);
+  let pointerReturnDrag = $state<{
     cardId: string;
+    source: 'hand' | 'camel';
     pointerId: number;
     startX: number;
     startY: number;
+    currentX: number;
+    currentY: number;
     moved: boolean;
   } | null>(null);
-  let suppressHandClickId = $state<string | null>(null);
+  let suppressReturnClickId = $state<string | null>(null);
   const goods: Good[] = ['diamond', 'gold', 'silver', 'cloth', 'spice', 'leather'];
   const componentImage = (kind: Good | 'camel' | 'seal' | 'card-back') =>
     `${assetBase}/components/${kind}.webp`;
@@ -239,9 +245,12 @@
 
   function resetInteractions() {
     exchangeLoads = {};
+    exchangeLoadModes = {};
     activeExchangeTarget = null;
     selectedHand = [];
-    draggedHandCardId = null;
+    selectedCamelId = null;
+    draggedReturnId = null;
+    draggedReturnSource = null;
   }
 
   function exchangeMarketIds(): string[] {
@@ -260,14 +269,17 @@
     return lobby.round?.herds[uid]?.find(({ id }) => id === cardId);
   }
 
-  function marketGood(cardId: string): Card | undefined {
-    return lobby.round?.market.find(({ id, kind }) => id === cardId && kind !== 'camel');
+  function exchangeReturnCard(marketCardId: string): Card | undefined {
+    const returnId = exchangeLoads[marketCardId];
+    return returnId ? handCard(returnId) ?? herdCamel(returnId) : undefined;
   }
 
-  function returnKind(marketCardId: string): 'camel' | 'card' | null {
-    const returnId = exchangeLoads[marketCardId];
-    if (!returnId) return null;
-    return herdCamel(returnId) ? 'camel' : 'card';
+  function returnCard(cardId: string): Card | undefined {
+    return handCard(cardId) ?? herdCamel(cardId);
+  }
+
+  function marketGood(cardId: string): Card | undefined {
+    return lobby.round?.market.find(({ id, kind }) => id === cardId && kind !== 'camel');
   }
 
   function availableCamel(marketCardId: string): Card | undefined {
@@ -282,7 +294,24 @@
     );
   }
 
-  function assignExchangeReturn(marketCardId: string, returnCardId: string) {
+  function availableReturnCards(marketCardId: string): Card[] {
+    const currentReturn = exchangeLoads[marketCardId];
+    const usedReturns = new Set(
+      Object.entries(exchangeLoads)
+        .filter(([targetId]) => targetId !== marketCardId)
+        .map(([, returnId]) => returnId)
+    );
+    return [
+      ...(lobby.round?.hands[uid] ?? []),
+      ...(lobby.round?.herds[uid] ?? [])
+    ].filter(({ id }) => id === currentReturn || !usedReturns.has(id));
+  }
+
+  function assignExchangeReturn(
+    marketCardId: string,
+    returnCardId: string,
+    mode: 'click' | 'drag' = 'click'
+  ) {
     if (
       !marketGood(marketCardId) ||
       (!handCard(returnCardId) && !herdCamel(returnCardId))
@@ -296,7 +325,14 @@
       )
     );
     exchangeLoads = { ...nextLoads, [marketCardId]: returnCardId };
+    exchangeLoadModes = {
+      ...Object.fromEntries(
+        Object.entries(exchangeLoadModes).filter(([targetId]) => targetId in nextLoads)
+      ),
+      [marketCardId]: mode
+    };
     selectedHand = selectedHand.filter((id) => id !== returnCardId);
+    if (selectedCamelId === returnCardId) selectedCamelId = null;
     activeExchangeTarget = null;
   }
 
@@ -304,26 +340,25 @@
     exchangeLoads = Object.fromEntries(
       Object.entries(exchangeLoads).filter(([targetId]) => targetId !== marketCardId)
     );
+    exchangeLoadModes = Object.fromEntries(
+      Object.entries(exchangeLoadModes).filter(([targetId]) => targetId !== marketCardId)
+    );
     if (activeExchangeTarget === marketCardId) activeExchangeTarget = null;
   }
 
-  function loadCamelExchange(marketCardId: string) {
-    if (returnKind(marketCardId) === 'camel') {
+  function chooseExchangeDrop(marketCardId: string) {
+    if (exchangeLoads[marketCardId]) {
       unloadExchange(marketCardId);
-      return;
-    }
-    const camel = availableCamel(marketCardId);
-    if (camel) assignExchangeReturn(marketCardId, camel.id);
-  }
-
-  function chooseCardExchange(marketCardId: string) {
-    if (returnKind(marketCardId) === 'card' && selectedHand.length === 0) {
-      unloadExchange(marketCardId);
-      activeExchangeTarget = marketCardId;
       return;
     }
     const selectedReturn = selectedHand.find(
       (cardId) => !exchangeReturnIds().includes(cardId) && handCard(cardId)
+    ) ?? (
+      selectedCamelId &&
+      !exchangeReturnIds().includes(selectedCamelId) &&
+      herdCamel(selectedCamelId)
+        ? selectedCamelId
+        : undefined
     );
     if (selectedReturn) {
       assignExchangeReturn(marketCardId, selectedReturn);
@@ -333,9 +368,26 @@
       activeExchangeTarget === marketCardId ? null : marketCardId;
   }
 
+  function chooseCamelSource() {
+    if (suppressReturnClickId && herdCamel(suppressReturnClickId)) {
+      suppressReturnClickId = null;
+      return;
+    }
+    const camel = selectedCamelId
+      ? herdCamel(selectedCamelId)
+      : availableCamel(activeExchangeTarget ?? '');
+    if (!camel) return;
+    if (activeExchangeTarget) {
+      assignExchangeReturn(activeExchangeTarget, camel.id);
+      return;
+    }
+    selectedHand = [];
+    selectedCamelId = selectedCamelId === camel.id ? null : camel.id;
+  }
+
   function chooseHandCard(card: Card) {
-    if (suppressHandClickId === card.id) {
-      suppressHandClickId = null;
+    if (suppressReturnClickId === card.id) {
+      suppressReturnClickId = null;
       return;
     }
     const loadedTarget = Object.entries(exchangeLoads).find(
@@ -350,59 +402,85 @@
       assignExchangeReturn(activeExchangeTarget, card.id);
       return;
     }
+    selectedCamelId = null;
     selectedHand = toggleSelection(selectedHand, card.id);
   }
 
-  function beginHandPointer(event: PointerEvent, cardId: string) {
+  function beginReturnPointer(
+    event: PointerEvent,
+    cardId: string,
+    source: 'hand' | 'camel'
+  ) {
     if (!event.isPrimary || event.button !== 0 || busy || status === 'offline') return;
-    pointerHandDrag = {
+    pointerReturnDrag = {
       cardId,
+      source,
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
+      currentX: event.clientX,
+      currentY: event.clientY,
       moved: false
     };
   }
 
-  function moveHandPointer(event: PointerEvent) {
-    if (!pointerHandDrag || event.pointerId !== pointerHandDrag.pointerId) return;
+  function moveReturnPointer(event: PointerEvent) {
+    if (!pointerReturnDrag || event.pointerId !== pointerReturnDrag.pointerId) return;
     const distance = Math.hypot(
-      event.clientX - pointerHandDrag.startX,
-      event.clientY - pointerHandDrag.startY
+      event.clientX - pointerReturnDrag.startX,
+      event.clientY - pointerReturnDrag.startY
     );
-    if (!pointerHandDrag.moved && distance < 7) return;
-    if (!pointerHandDrag.moved) {
-      pointerHandDrag = { ...pointerHandDrag, moved: true };
-      draggedHandCardId = pointerHandDrag.cardId;
-    }
+    if (!pointerReturnDrag.moved && distance < 7) return;
+    pointerReturnDrag = {
+      ...pointerReturnDrag,
+      currentX: event.clientX,
+      currentY: event.clientY,
+      moved: true
+    };
+    draggedReturnId = pointerReturnDrag.cardId;
+    draggedReturnSource = pointerReturnDrag.source;
     event.preventDefault();
   }
 
-  function finishHandPointer(event: PointerEvent) {
-    if (!pointerHandDrag || event.pointerId !== pointerHandDrag.pointerId) return;
-    const { cardId, moved } = pointerHandDrag;
+  function finishReturnPointer(event: PointerEvent) {
+    if (!pointerReturnDrag || event.pointerId !== pointerReturnDrag.pointerId) return;
+    const { cardId, moved } = pointerReturnDrag;
     if (moved) {
       const dropTarget = document
         .elementFromPoint(event.clientX, event.clientY)
         ?.closest<HTMLElement>('[data-exchange-target]');
       const marketCardId = dropTarget?.dataset.exchangeTarget;
       if (marketCardId && !dropTarget.matches(':disabled')) {
-        assignExchangeReturn(marketCardId, cardId);
+        assignExchangeReturn(marketCardId, cardId, 'drag');
       }
-      suppressHandClickId = cardId;
+      suppressReturnClickId = cardId;
       setTimeout(() => {
-        if (suppressHandClickId === cardId) suppressHandClickId = null;
+        if (suppressReturnClickId === cardId) suppressReturnClickId = null;
       });
       event.preventDefault();
     }
-    pointerHandDrag = null;
-    draggedHandCardId = null;
+    pointerReturnDrag = null;
+    draggedReturnId = null;
+    draggedReturnSource = null;
   }
 
-  function cancelHandPointer(event: PointerEvent) {
-    if (!pointerHandDrag || event.pointerId !== pointerHandDrag.pointerId) return;
-    pointerHandDrag = null;
-    draggedHandCardId = null;
+  function cancelReturnPointer(event: PointerEvent) {
+    if (!pointerReturnDrag || event.pointerId !== pointerReturnDrag.pointerId) return;
+    pointerReturnDrag = null;
+    draggedReturnId = null;
+    draggedReturnSource = null;
+  }
+
+  function ownHerdCards(): Card[] {
+    const loadedReturns = new Set(exchangeReturnIds());
+    return (lobby.round?.herds[uid] ?? []).filter(({ id }) => !loadedReturns.has(id));
+  }
+
+  function camelStackStyle(index: number): string {
+    const x = index < 3 ? index * 0.42 : 0.84 + (index - 2) * 0.1;
+    const y = [0.08, 0, 0.12, 0.04, 0.1][index % 5];
+    const rotation = [-7, 4, -2, 7, -4, 2][index % 6];
+    return `--camel-x: ${x.toFixed(2)}rem; --camel-y: ${y.toFixed(2)}rem; --camel-rotation: ${rotation}deg; z-index: ${index + 1}`;
   }
 
   function projectedHandSize() {
@@ -453,6 +531,7 @@
       lobby.round?.activeUid !== uid ||
       exchangeMarketIds().length > 0 ||
       Boolean(activeExchangeTarget) ||
+      Boolean(selectedCamelId) ||
       lobby.round.goodsTokens[kind].length === 0
     ) {
       return false;
@@ -513,9 +592,9 @@
 </svelte:head>
 
 <svelte:window
-  onpointermove={moveHandPointer}
-  onpointerup={finishHandPointer}
-  onpointercancel={cancelHandPointer}
+  onpointermove={moveReturnPointer}
+  onpointerup={finishReturnPointer}
+  onpointercancel={cancelReturnPointer}
 />
 
 <a class="skip-link" href="#game-content">Skip to game</a>
@@ -743,18 +822,20 @@
           style={`--zone-art: url("${componentImage('card-back')}")`}
         >
           <h2 id="market-heading">Market</h2>
-          {#if lobby.round.activeUid === uid && (exchangeMarketIds().length > 0 || activeExchangeTarget || selectedHand.length > 0)}
+          {#if lobby.round.activeUid === uid && (exchangeMarketIds().length > 0 || activeExchangeTarget || selectedHand.length > 0 || selectedCamelId)}
             <div class="interaction-tray" aria-live="polite">
               <p>
                 {#if activeExchangeTarget}
-                  Choose or drag a hand card to the highlighted card-back arrow.
+                  Choose or drag a hand card or camel to the highlighted drop target.
                 {:else if exchangeMarketIds().length > 0}
                   {exchangeMarketIds().length} market
                   {exchangeMarketIds().length === 1 ? 'card' : 'cards'} loaded ·
                   hand {projectedHandSize()} / 7
+                {:else if selectedCamelId}
+                  Camel selected · choose a dashed return target.
                 {:else}
                   {selectedHand.length} hand {selectedHand.length === 1 ? 'card' : 'cards'} selected ·
-                  choose a matching token stack or a card-back arrow.
+                  choose a matching token stack or a dashed return target.
                 {/if}
               </p>
               {#if exchangeMarketIds().length > 0}
@@ -771,6 +852,7 @@
           {/if}
           <div class="cards market">
             {#each lobby.round.market as card}
+              {@const loadedReturn = exchangeReturnCard(card.id)}
               <div
                 class="market-slot"
                 class:loaded={Boolean(exchangeLoads[card.id])}
@@ -796,35 +878,33 @@
                   </article>
                 {/if}
                 {#if card.kind !== 'camel' && lobby.round.activeUid === uid}
-                  <div class="exchange-arrows" aria-label={`Exchange destinations for ${cardLabel(card.kind)} ${card.id}`}>
-                    <button
-                      class="exchange-arrow"
-                      class:loaded={returnKind(card.id) === 'camel'}
-                      type="button"
-                      disabled={busy || status === 'offline' || (!availableCamel(card.id) && returnKind(card.id) !== 'camel')}
-                      aria-label={`Exchange ${cardLabel(card.kind)} ${card.id} for a camel`}
-                      aria-pressed={returnKind(card.id) === 'camel'}
-                      onclick={() => loadCamelExchange(card.id)}
-                    >
-                      <span aria-hidden="true">↑</span>
-                      <img src={componentImage('camel')} alt="" />
-                    </button>
-                    <button
-                      class="exchange-arrow card-return"
-                      class:loaded={returnKind(card.id) === 'card'}
-                      class:awaiting={activeExchangeTarget === card.id}
-                      class:drop-ready={Boolean(draggedHandCardId)}
-                      type="button"
-                      disabled={busy || status === 'offline' || (lobby.round.hands[uid]?.length ?? 0) === 0}
-                      data-exchange-target={card.id}
-                      aria-label={`Choose a hand card to exchange for ${cardLabel(card.kind)} ${card.id}`}
-                      aria-pressed={returnKind(card.id) === 'card' || activeExchangeTarget === card.id}
-                      onclick={() => chooseCardExchange(card.id)}
-                    >
-                      <span aria-hidden="true">↑</span>
-                      <img src={componentImage('card-back')} alt="" />
-                    </button>
-                  </div>
+                  <button
+                    class="exchange-drop-target"
+                    class:loaded={Boolean(loadedReturn)}
+                    class:awaiting={activeExchangeTarget === card.id}
+                    class:drop-ready={Boolean(draggedReturnId)}
+                    type="button"
+                    disabled={busy || status === 'offline' || (!loadedReturn && availableReturnCards(card.id).length === 0)}
+                    data-exchange-target={card.id}
+                    aria-label={loadedReturn
+                      ? `Remove ${cardLabel(loadedReturn.kind)} ${loadedReturn.id} from the exchange for ${cardLabel(card.kind)} ${card.id}`
+                      : `Return a hand card or camel for ${cardLabel(card.kind)} ${card.id}`}
+                    aria-pressed={Boolean(loadedReturn) || activeExchangeTarget === card.id}
+                    onclick={() => chooseExchangeDrop(card.id)}
+                  >
+                    {#if loadedReturn}
+                      <span
+                        class="loaded-return-card"
+                        class:click-loaded={exchangeLoadModes[card.id] === 'click'}
+                      >
+                        <img src={componentImage(loadedReturn.kind)} alt="" draggable="false" />
+                        <span>{cardLabel(loadedReturn.kind)}</span>
+                      </span>
+                    {:else}
+                      <span class="drop-target-mark" aria-hidden="true">＋</span>
+                      <span>Return card</span>
+                    {/if}
+                  </button>
                 {/if}
               </div>
             {/each}
@@ -853,8 +933,24 @@
               <span class="opponent-hand-empty">No cards</span>
             {/if}
           </div>
+          <div
+            class="camel-herd opponent-herd"
+            role="img"
+            aria-label={`${opponentPlayer()?.displayName ?? 'Opponent'} has ${lobby.round.herds[opponentUid()]?.length ?? 0} camels in their herd`}
+          >
+            <span>Herd</span>
+            <span class="camel-pile" aria-hidden="true">
+              {#each lobby.round.herds[opponentUid()] ?? [] as camel, index}
+                <img
+                  src={componentImage('camel')}
+                  alt=""
+                  draggable="false"
+                  style={camelStackStyle(index)}
+                />
+              {/each}
+            </span>
+          </div>
           <div class="opponent-private">
-            <span>Herd hidden</span>
             <span>{opponentTokenCount()} tokens · values hidden</span>
           </div>
         </div>
@@ -873,7 +969,7 @@
               <button
                 class="card-action hand-card"
                 class:selected={selectedHand.includes(card.id) || exchangeReturnIds().includes(card.id)}
-                class:dragging={draggedHandCardId === card.id}
+                class:dragging={draggedReturnId === card.id}
                 type="button"
                 disabled={status === 'offline'}
                 aria-label={exchangeReturnIds().includes(card.id)
@@ -883,7 +979,7 @@
                     : `${selectedHand.includes(card.id) ? 'Deselect' : 'Select'} ${cardLabel(card.kind)} ${card.id}`}
                 aria-pressed={selectedHand.includes(card.id) || exchangeReturnIds().includes(card.id)}
                 data-card-id={card.id}
-                onpointerdown={(event) => beginHandPointer(event, card.id)}
+                onpointerdown={(event) => beginReturnPointer(event, card.id, 'hand')}
                 onclick={() => chooseHandCard(card)}
               >
                 <PieceArt kind={card.kind} label={cardLabel(card.kind)} detail={card.id} />
@@ -895,10 +991,55 @@
             {/if}
           {/each}
           </div>
-          <p class="herd-total">
-            <img src={componentImage('camel')} alt="" />
-            Your herd: <strong>{lobby.round.herds[uid]?.length ?? 0} camels</strong>
-          </p>
+          <div class="camel-herd own-herd">
+            <span>Your herd</span>
+            {#if lobby.round.activeUid === uid}
+              <button
+                class="camel-stack"
+                class:selected={Boolean(selectedCamelId)}
+                class:dragging={draggedReturnSource === 'camel'}
+                type="button"
+                disabled={busy || status === 'offline' || ownHerdCards().length === 0}
+                aria-label="Select or drag a camel from your herd for exchange"
+                aria-pressed={Boolean(selectedCamelId)}
+                onpointerdown={(event) => {
+                  const camel = selectedCamelId
+                    ? herdCamel(selectedCamelId)
+                    : availableCamel(activeExchangeTarget ?? '');
+                  if (camel) beginReturnPointer(event, camel.id, 'camel');
+                }}
+                onclick={chooseCamelSource}
+              >
+                <span class="camel-pile" aria-hidden="true">
+                  {#each ownHerdCards() as camel, index}
+                    <img
+                      src={componentImage('camel')}
+                      alt=""
+                      draggable="false"
+                      style={camelStackStyle(index)}
+                    />
+                  {/each}
+                </span>
+              </button>
+            {:else}
+              <span
+                class="camel-stack"
+                role="img"
+                aria-label={`You have ${lobby.round.herds[uid]?.length ?? 0} camels in your herd`}
+              >
+                <span class="camel-pile" aria-hidden="true">
+                  {#each lobby.round.herds[uid] ?? [] as camel, index}
+                    <img
+                      src={componentImage('camel')}
+                      alt=""
+                      draggable="false"
+                      style={camelStackStyle(index)}
+                    />
+                  {/each}
+                </span>
+              </span>
+            {/if}
+          </div>
         </section>
         <section class="token-area" aria-label="Token supplies">
           <h2>Token supplies</h2>
@@ -944,6 +1085,18 @@
     {/if}
     <p class="build" data-testid="build-marker">Build {buildHash}</p>
   </section>
+  {#if draggedReturnId && pointerReturnDrag?.moved}
+    {@const draggedCard = returnCard(draggedReturnId)}
+    {#if draggedCard}
+      <span
+        class="return-drag-preview"
+        aria-hidden="true"
+        style={`left: ${pointerReturnDrag.currentX}px; top: ${pointerReturnDrag.currentY}px`}
+      >
+        <img src={componentImage(draggedCard.kind)} alt="" draggable="false" />
+      </span>
+    {/if}
+  {/if}
 </main>
 
 <style>
@@ -1178,44 +1331,60 @@
     min-width: 0;
     gap: 0.2rem;
   }
-  .exchange-arrows {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.2rem;
-  }
-  .exchange-arrow {
+  .exchange-drop-target {
     display: flex;
     min-width: 0;
     min-height: 44px;
     align-items: center;
     justify-content: center;
-    gap: 0.08rem;
+    gap: 0.25rem;
     padding: 0.15rem;
-    border: 2px solid #b7aa8d;
+    border: 2px dashed #8e826b;
     border-radius: 0.45rem;
-    background: #f2e8d3;
+    background: rgb(242 232 211 / 72%);
     color: #315f58;
+    font-size: 0.68rem;
   }
-  .exchange-arrow img {
-    width: 1.65rem;
-    height: 1.65rem;
+  .loaded-return-card {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .loaded-return-card img {
+    width: 2rem;
+    height: 2rem;
     border-radius: 0.25rem;
     object-fit: cover;
   }
-  .exchange-arrow span {
-    font-size: 1.15rem;
-    line-height: 1;
+  .loaded-return-card > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .exchange-arrow.loaded,
-  .exchange-arrow.awaiting {
+  .exchange-drop-target.loaded,
+  .exchange-drop-target.awaiting {
     border-color: #d38b21;
     background: #fff0ce;
     box-shadow: inset 0 0 0 2px #d38b21;
   }
-  .exchange-arrow.drop-ready {
+  .exchange-drop-target.drop-ready {
     border-color: #315f58;
     background: #dce8df;
     box-shadow: inset 0 0 0 2px #315f58;
+  }
+  .drop-target-mark {
+    font-size: 1.2rem;
+    line-height: 1;
+  }
+  .loaded-return-card.click-loaded {
+    animation: click-load-return 180ms ease-out;
+  }
+  @keyframes click-load-return {
+    from {
+      opacity: 0;
+      transform: translateY(0.9rem) rotate(-7deg) scale(0.86);
+    }
   }
   .market-slot.loaded > .card-action,
   .market-slot.awaiting > .card-action {
@@ -1598,7 +1767,7 @@
     color: white;
   }
   .market-slot,
-  .exchange-arrows {
+  .exchange-drop-target {
     width: var(--card-size);
   }
   .cards article.camel {
@@ -1651,9 +1820,13 @@
     grid-area: opponent;
     min-height: 44px;
     display: grid;
-    grid-template-columns: minmax(3.5rem, auto) minmax(0, 1fr) minmax(5.5rem, auto);
+    grid-template-columns:
+      minmax(3.5rem, auto)
+      minmax(0, 1fr)
+      minmax(4.5rem, auto)
+      minmax(5.5rem, auto);
     align-items: center;
-    gap: 0.45rem;
+    gap: 0.3rem;
     margin: 0;
     padding: 0.3rem 0.5rem;
     font-size: clamp(0.65rem, 1.5vmin, 0.82rem);
@@ -1699,18 +1872,83 @@
     font-size: 0.65rem;
     font-style: italic;
   }
-  .herd-total {
-    display: flex;
+  .camel-herd {
+    display: grid;
+    min-width: 0;
     min-height: 44px;
+    grid-template-columns: auto minmax(4rem, 1fr);
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.3rem;
     margin: 0;
-    font-size: 0.8rem;
+    font-size: 0.72rem;
   }
-  .herd-total img {
-    width: 2rem;
-    height: 2rem;
-    border-radius: 50%;
+  .own-herd {
+    align-self: start;
+  }
+  .camel-stack {
+    position: relative;
+    display: grid;
+    width: min(6rem, 100%);
+    min-width: 44px;
+    min-height: 44px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 0.45rem;
+    background: transparent;
+    color: inherit;
+    touch-action: none;
+    user-select: none;
+  }
+  button.camel-stack:not(:disabled):hover,
+  button.camel-stack.selected {
+    border-color: #d38b21;
+    background: rgb(255 240 206 / 70%);
+  }
+  .camel-stack.dragging {
+    opacity: 0.5;
+  }
+  .camel-pile {
+    position: relative;
+    display: block;
+    width: 4.6rem;
+    height: 2.25rem;
+  }
+  .camel-pile img {
+    position: absolute;
+    top: var(--camel-y);
+    left: var(--camel-x);
+    width: 2.1rem;
+    height: 2.1rem;
+    border: 1px solid #315f58;
+    border-radius: 0.35rem;
+    box-shadow: 0 0.16rem 0.26rem rgb(24 58 55 / 30%);
+    object-fit: cover;
+    transform: rotate(var(--camel-rotation));
+  }
+  .opponent-herd {
+    grid-template-columns: auto 3.7rem;
+    min-height: 38px;
+  }
+  .opponent-herd .camel-pile {
+    width: 3.7rem;
+    transform: scale(0.84);
+    transform-origin: center;
+  }
+  .return-drag-preview {
+    position: fixed;
+    z-index: 100;
+    width: 3.5rem;
+    height: 3.5rem;
+    pointer-events: none;
+    transform: translate(-50%, -50%) rotate(4deg);
+    filter: drop-shadow(0 0.4rem 0.45rem rgb(24 58 55 / 30%));
+  }
+  .return-drag-preview img {
+    width: 100%;
+    height: 100%;
+    border: 2px solid #315f58;
+    border-radius: 0.45rem;
     object-fit: cover;
   }
   .token-area {
@@ -1948,8 +2186,12 @@
       height: 1.05rem;
     }
     .opponent {
-      grid-template-columns: minmax(3rem, auto) minmax(0, 1fr) minmax(5rem, auto);
-      gap: 0.35rem;
+      grid-template-columns:
+        minmax(2.7rem, auto)
+        minmax(0, 1fr)
+        minmax(3.3rem, auto)
+        minmax(4.5rem, auto);
+      gap: 0.2rem;
       padding-inline: 0.35rem;
     }
     .opponent-card-back {
@@ -2096,7 +2338,7 @@
     .token-area > p {
       display: none;
     }
-    .herd-total {
+    .camel-herd {
       min-height: 34px;
     }
     .score-review {

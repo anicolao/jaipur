@@ -54,7 +54,14 @@ test('ready traders receive a deterministic private deal', async ({ browser, pag
             'aria-label',
             'Belen has 4 of 7 cards'
           );
-          await expect(page.getByText('Herd hidden')).toBeVisible();
+          const rivalHerdCount = await rival.locator('.own-herd .camel-pile img').count();
+          await expect(page.locator('.opponent-herd .camel-pile img')).toHaveCount(
+            rivalHerdCount
+          );
+          await expect(page.locator('.opponent-herd')).toHaveAttribute(
+            'aria-label',
+            `Belen has ${rivalHerdCount} camels in their herd`
+          );
         }
       },
       {

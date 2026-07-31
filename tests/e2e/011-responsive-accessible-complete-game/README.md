@@ -8,8 +8,8 @@ The complete market remains legible and operable by keyboard and touch at phone 
 
 **Verifications:**
 
-- [x] Both card-back destinations expose their loaded pressed state
-- [x] Market and hand cards keep one square physical footprint
+- [x] Both dashed return targets expose their loaded pressed state
+- [x] Market, hand, and herd cards preserve their physical footprints
 - [x] Keyboard focus is visible and turn changes are announced politely
 - [x] All available controls meet the 44-pixel touch target and have accessible names
 - [x] Reduced-motion preference removes card transitions
@@ -20,7 +20,7 @@ The complete market remains legible and operable by keyboard and touch at phone 
 
 **Verifications:**
 
-- [x] Market, private hand, concealed opponent hand, and public supplies remain labelled
+- [x] Market, private hand, public camel herds, concealed opponent hand, and supplies remain labelled
 - [x] Connection state remains announced without an offline-mode control
 - [x] All remaining controls retain accessible names and touch-sized targets
 - [x] The complete table fits the viewport without document scrolling
