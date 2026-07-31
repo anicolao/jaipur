@@ -34,7 +34,23 @@
   let busy = $state(false);
   let shellOnly = $state(true);
   let exchangeLoads = $state<Record<string, string>>({});
-  let exchangeLoadModes = $state<Record<string, 'click' | 'drag'>>({});
+  let returnFlights = $state<Array<{
+    key: number;
+    marketCardId: string;
+    cardId: string;
+    kind: Good | 'camel';
+    label: string;
+    startLeft: number;
+    startTop: number;
+    startSize: number;
+    middleLeft: number;
+    middleTop: number;
+    middleSize: number;
+    endLeft: number;
+    endTop: number;
+    endSize: number;
+  }>>([]);
+  let returnFlightSequence = 0;
   let activeExchangeTarget = $state<string | null>(null);
   let selectedHand = $state<string[]>([]);
   let selectedCamelId = $state<string | null>(null);
@@ -60,6 +76,8 @@
   const opponentTokenCount = () =>
     (lobby.round?.ownedGoodsTokens[opponentUid()]?.length ?? 0) +
     (lobby.round?.ownedBonusTokens[opponentUid()]?.length ?? 0);
+  const camelCountLabel = (count: number) =>
+    `${count} ${count === 1 ? 'camel' : 'camels'}`;
   const buildHash = (import.meta.env.VITE_GIT_HASH ?? 'local').slice(0, 7);
 
   onMount(async () => {
@@ -245,7 +263,7 @@
 
   function resetInteractions() {
     exchangeLoads = {};
-    exchangeLoadModes = {};
+    returnFlights = [];
     activeExchangeTarget = null;
     selectedHand = [];
     selectedCamelId = null;
@@ -318,6 +336,7 @@
     ) {
       return;
     }
+    if (mode === 'click') startReturnFlight(marketCardId, returnCardId);
     const nextLoads = Object.fromEntries(
       Object.entries(exchangeLoads).filter(
         ([targetId, loadedReturnId]) =>
@@ -325,12 +344,6 @@
       )
     );
     exchangeLoads = { ...nextLoads, [marketCardId]: returnCardId };
-    exchangeLoadModes = {
-      ...Object.fromEntries(
-        Object.entries(exchangeLoadModes).filter(([targetId]) => targetId in nextLoads)
-      ),
-      [marketCardId]: mode
-    };
     selectedHand = selectedHand.filter((id) => id !== returnCardId);
     if (selectedCamelId === returnCardId) selectedCamelId = null;
     activeExchangeTarget = null;
@@ -340,10 +353,56 @@
     exchangeLoads = Object.fromEntries(
       Object.entries(exchangeLoads).filter(([targetId]) => targetId !== marketCardId)
     );
-    exchangeLoadModes = Object.fromEntries(
-      Object.entries(exchangeLoadModes).filter(([targetId]) => targetId !== marketCardId)
+    returnFlights = returnFlights.filter(
+      (flight) => flight.marketCardId !== marketCardId
     );
     if (activeExchangeTarget === marketCardId) activeExchangeTarget = null;
+  }
+
+  function startReturnFlight(marketCardId: string, returnCardId: string) {
+    const card = returnCard(returnCardId);
+    const source = document.querySelector<HTMLElement>(
+      `[data-return-source="${CSS.escape(returnCardId)}"]`
+    );
+    const destination = document.querySelector<HTMLElement>(
+      `[data-exchange-target="${CSS.escape(marketCardId)}"]`
+    );
+    if (!card || !source || !destination) return;
+
+    const sourceBox = source.getBoundingClientRect();
+    const destinationBox = destination.getBoundingClientRect();
+    const startSize = Math.min(sourceBox.width, sourceBox.height);
+    const endSize = Math.min(36, destinationBox.height - 8);
+    const startLeft = sourceBox.left + (sourceBox.width - startSize) / 2;
+    const startTop = sourceBox.top + (sourceBox.height - startSize) / 2;
+    const endLeft = destinationBox.left + (destinationBox.width - endSize) / 2;
+    const endTop = destinationBox.top + (destinationBox.height - endSize) / 2;
+    const distance = Math.hypot(endLeft - startLeft, endTop - startTop);
+    const key = ++returnFlightSequence;
+    returnFlights = [
+      ...returnFlights,
+      {
+        key,
+        marketCardId,
+        cardId: returnCardId,
+        kind: card.kind,
+        label: cardLabel(card.kind),
+        startLeft,
+        startTop,
+        startSize,
+        middleLeft: (startLeft + endLeft) / 2,
+        middleTop: Math.min(startTop, endTop) - Math.min(96, distance * 0.2),
+        middleSize: (startSize + endSize) / 2,
+        endLeft,
+        endTop,
+        endSize
+      }
+    ];
+    setTimeout(() => finishReturnFlight(key), 620);
+  }
+
+  function finishReturnFlight(key: number) {
+    returnFlights = returnFlights.filter((flight) => flight.key !== key);
   }
 
   function chooseExchangeDrop(marketCardId: string) {
@@ -481,6 +540,21 @@
     const y = [0.08, 0, 0.12, 0.04, 0.1][index % 5];
     const rotation = [-7, 4, -2, 7, -4, 2][index % 6];
     return `--camel-x: ${x.toFixed(2)}rem; --camel-y: ${y.toFixed(2)}rem; --camel-rotation: ${rotation}deg; z-index: ${index + 1}`;
+  }
+
+  function ownCamelStackStyle(index: number): string {
+    const x = index < 3 ? index * 0.72 : 1.44 + (index - 2) * 0.16;
+    const y = [0.14, 0.02, 0.18, 0.08, 0.16][index % 5];
+    const rotation = [-5, 3, -2, 5, -3, 2][index % 6];
+    return `--camel-x: ${x.toFixed(2)}rem; --camel-y: ${y.toFixed(2)}rem; --camel-rotation: ${rotation}deg; z-index: ${index + 1}`;
+  }
+
+  function ownCamelStackSpan(): string {
+    const count = ownHerdCards().length;
+    if (count <= 1) return '0rem';
+    const lastIndex = count - 1;
+    const span = lastIndex < 3 ? lastIndex * 0.72 : 1.44 + (lastIndex - 2) * 0.16;
+    return `${span.toFixed(2)}rem`;
   }
 
   function projectedHandSize() {
@@ -895,7 +969,9 @@
                     {#if loadedReturn}
                       <span
                         class="loaded-return-card"
-                        class:click-loaded={exchangeLoadModes[card.id] === 'click'}
+                        class:flight-arrival={returnFlights.some(
+                          (flight) => flight.marketCardId === card.id
+                        )}
                       >
                         <img src={componentImage(loadedReturn.kind)} alt="" draggable="false" />
                         <span>{cardLabel(loadedReturn.kind)}</span>
@@ -936,7 +1012,7 @@
           <div
             class="camel-herd opponent-herd"
             role="img"
-            aria-label={`${opponentPlayer()?.displayName ?? 'Opponent'} has ${lobby.round.herds[opponentUid()]?.length ?? 0} camels in their herd`}
+            aria-label={`${opponentPlayer()?.displayName ?? 'Opponent'} has ${camelCountLabel(lobby.round.herds[opponentUid()]?.length ?? 0)} in their herd`}
           >
             <span>Herd</span>
             <span class="camel-pile" aria-hidden="true">
@@ -962,9 +1038,9 @@
           <h2 id="hand-heading">Your hand</h2>
           <div
             class="cards hand"
-            style={`grid-template-columns: repeat(${Math.max(lobby.round.hands[uid]?.length ?? 0, 1)}, minmax(0, var(--card-size)));`}
+            style={`grid-template-columns: repeat(${Math.max((lobby.round.hands[uid] ?? []).filter(({ id }) => !exchangeReturnIds().includes(id)).length, 1)}, minmax(0, var(--card-size)));`}
           >
-          {#each lobby.round.hands[uid] ?? [] as card}
+          {#each (lobby.round.hands[uid] ?? []).filter(({ id }) => !exchangeReturnIds().includes(id)) as card}
             {#if lobby.round.activeUid === uid}
               <button
                 class="card-action hand-card"
@@ -979,6 +1055,7 @@
                     : `${selectedHand.includes(card.id) ? 'Deselect' : 'Select'} ${cardLabel(card.kind)} ${card.id}`}
                 aria-pressed={selectedHand.includes(card.id) || exchangeReturnIds().includes(card.id)}
                 data-card-id={card.id}
+                data-return-source={card.id}
                 onpointerdown={(event) => beginReturnPointer(event, card.id, 'hand')}
                 onclick={() => chooseHandCard(card)}
               >
@@ -991,17 +1068,21 @@
             {/if}
           {/each}
           </div>
-          <div class="camel-herd own-herd">
-            <span>Your herd</span>
+          <div class="own-herd">
+            <span class="own-herd-label">
+              <span>Your herd</span>
+              <strong>{camelCountLabel(lobby.round.herds[uid]?.length ?? 0)}</strong>
+            </span>
             {#if lobby.round.activeUid === uid}
               <button
-                class="camel-stack"
+                class="own-camel-stack"
                 class:selected={Boolean(selectedCamelId)}
                 class:dragging={draggedReturnSource === 'camel'}
                 type="button"
                 disabled={busy || status === 'offline' || ownHerdCards().length === 0}
                 aria-label="Select or drag a camel from your herd for exchange"
                 aria-pressed={Boolean(selectedCamelId)}
+                style={`--herd-span: ${ownCamelStackSpan()}`}
                 onpointerdown={(event) => {
                   const camel = selectedCamelId
                     ? herdCamel(selectedCamelId)
@@ -1010,31 +1091,39 @@
                 }}
                 onclick={chooseCamelSource}
               >
-                <span class="camel-pile" aria-hidden="true">
+                <span
+                  class="own-camel-pile"
+                  aria-hidden="true"
+                >
                   {#each ownHerdCards() as camel, index}
-                    <img
-                      src={componentImage('camel')}
-                      alt=""
-                      draggable="false"
-                      style={camelStackStyle(index)}
-                    />
+                    <span
+                      class="own-camel-card"
+                      data-return-source={camel.id}
+                      style={ownCamelStackStyle(index)}
+                    >
+                      <PieceArt kind="camel" label="Camel" detail={camel.id} />
+                    </span>
                   {/each}
                 </span>
               </button>
             {:else}
               <span
-                class="camel-stack"
+                class="own-camel-stack"
                 role="img"
-                aria-label={`You have ${lobby.round.herds[uid]?.length ?? 0} camels in your herd`}
+                aria-label={`You have ${camelCountLabel(lobby.round.herds[uid]?.length ?? 0)} in your herd`}
+                style={`--herd-span: ${ownCamelStackSpan()}`}
               >
-                <span class="camel-pile" aria-hidden="true">
+                <span
+                  class="own-camel-pile"
+                  aria-hidden="true"
+                >
                   {#each lobby.round.herds[uid] ?? [] as camel, index}
-                    <img
-                      src={componentImage('camel')}
-                      alt=""
-                      draggable="false"
-                      style={camelStackStyle(index)}
-                    />
+                    <span
+                      class="own-camel-card"
+                      style={ownCamelStackStyle(index)}
+                    >
+                      <PieceArt kind="camel" label="Camel" detail={camel.id} />
+                    </span>
                   {/each}
                 </span>
               </span>
@@ -1097,6 +1186,19 @@
       </span>
     {/if}
   {/if}
+  {#each returnFlights as flight (flight.key)}
+    <span
+      class="return-flight-card"
+      data-flight-card-id={flight.cardId}
+      data-flight-target-id={flight.marketCardId}
+      aria-hidden="true"
+      style={`--flight-start-left: ${flight.startLeft}px; --flight-start-top: ${flight.startTop}px; --flight-start-size: ${flight.startSize}px; --flight-middle-left: ${flight.middleLeft}px; --flight-middle-top: ${flight.middleTop}px; --flight-middle-size: ${flight.middleSize}px; --flight-end-left: ${flight.endLeft}px; --flight-end-top: ${flight.endTop}px; --flight-end-size: ${flight.endSize}px`}
+      onanimationend={() => finishReturnFlight(flight.key)}
+    >
+      <img src={componentImage(flight.kind)} alt="" draggable="false" />
+      <span>{flight.label}</span>
+    </span>
+  {/each}
 </main>
 
 <style>
@@ -1394,13 +1496,16 @@
   .drop-target-mark::after {
     transform: translate(-50%, -50%) rotate(90deg);
   }
-  .loaded-return-card.click-loaded {
-    animation: click-load-return 180ms ease-out;
+  .loaded-return-card.flight-arrival {
+    animation: reveal-flight-arrival 520ms step-end both;
   }
-  @keyframes click-load-return {
-    from {
+  @keyframes reveal-flight-arrival {
+    0%,
+    99% {
       opacity: 0;
-      transform: translateY(0.9rem) rotate(-7deg) scale(0.86);
+    }
+    100% {
+      opacity: 1;
     }
   }
   .market-slot.loaded > .card-action,
@@ -1900,12 +2005,30 @@
     font-size: 0.72rem;
   }
   .own-herd {
+    display: grid;
+    min-width: 0;
+    min-height: var(--card-size);
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
     align-self: start;
+    gap: 0.45rem;
+    margin-top: 0.25rem;
   }
-  .camel-stack {
+  .own-herd-label {
+    display: grid;
+    min-width: 4.4rem;
+    gap: 0.08rem;
+    font-size: 0.72rem;
+    line-height: 1.05;
+  }
+  .own-herd-label strong {
+    white-space: nowrap;
+  }
+  .own-camel-stack {
     position: relative;
     display: grid;
-    width: min(6rem, 100%);
+    width: min(100%, calc(var(--card-size) + var(--herd-span, 0rem)));
+    height: calc(var(--card-size) + 0.4rem);
     min-width: 44px;
     min-height: 44px;
     place-items: center;
@@ -1917,13 +2040,40 @@
     touch-action: none;
     user-select: none;
   }
-  button.camel-stack:not(:disabled):hover,
-  button.camel-stack.selected {
+  button.own-camel-stack:not(:disabled):hover,
+  button.own-camel-stack.selected {
     border-color: #d38b21;
     background: rgb(255 240 206 / 70%);
   }
-  .camel-stack.dragging {
+  .own-camel-stack.dragging {
     opacity: 0.5;
+  }
+  .own-camel-pile {
+    position: relative;
+    display: block;
+    width: min(100%, calc(var(--card-size) + var(--herd-span, 0rem)));
+    height: calc(var(--card-size) + 0.4rem);
+  }
+  .own-camel-card {
+    position: absolute;
+    top: var(--camel-y);
+    left: var(--camel-x);
+    display: grid;
+    width: var(--card-size);
+    height: var(--card-size);
+    grid-template-rows: minmax(0, 1fr) auto;
+    padding: 0.18rem;
+    overflow: hidden;
+    border: 2px solid #315f58;
+    border-radius: 0.55rem;
+    background: #183a37;
+    box-shadow: 0 0.24rem 0.4rem rgb(24 58 55 / 28%);
+    color: white;
+    transform: rotate(var(--camel-rotation));
+    transform-origin: 50% 82%;
+  }
+  .own-camel-card :global(small) {
+    display: none;
   }
   .camel-pile {
     position: relative;
@@ -1967,6 +2117,74 @@
     border: 2px solid #315f58;
     border-radius: 0.45rem;
     object-fit: cover;
+  }
+  .return-flight-card {
+    position: fixed;
+    z-index: 120;
+    top: var(--flight-start-top);
+    left: var(--flight-start-left);
+    display: grid;
+    width: var(--flight-start-size);
+    height: var(--flight-start-size);
+    grid-template-rows: minmax(0, 1fr) auto;
+    padding: 0.18rem;
+    overflow: hidden;
+    border: 2px solid #315f58;
+    border-radius: 0.55rem;
+    background: #183a37;
+    box-shadow: 0 0.7rem 1.2rem rgb(24 58 55 / 36%);
+    color: white;
+    pointer-events: none;
+    animation: return-card-flight 520ms cubic-bezier(0.2, 0.72, 0.2, 1) both;
+  }
+  .return-flight-card img {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    border-radius: 0.35rem;
+    object-fit: cover;
+  }
+  .return-flight-card > span {
+    position: absolute;
+    right: 0.18rem;
+    bottom: 0.18rem;
+    left: 0.18rem;
+    padding: 0.15rem 0.2rem;
+    overflow: hidden;
+    border-radius: 0 0 0.3rem 0.3rem;
+    background: rgb(10 32 30 / 82%);
+    color: white;
+    font-size: clamp(0.5rem, 1.2vmin, 0.72rem);
+    line-height: 1;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  @keyframes return-card-flight {
+    0% {
+      top: var(--flight-start-top);
+      left: var(--flight-start-left);
+      width: var(--flight-start-size);
+      height: var(--flight-start-size);
+      opacity: 1;
+      transform: rotate(0deg) scale(1);
+    }
+    48% {
+      top: var(--flight-middle-top);
+      left: var(--flight-middle-left);
+      width: var(--flight-middle-size);
+      height: var(--flight-middle-size);
+      opacity: 1;
+      transform: rotate(-7deg) scale(1.05);
+    }
+    100% {
+      top: var(--flight-end-top);
+      left: var(--flight-end-left);
+      width: var(--flight-end-size);
+      height: var(--flight-end-size);
+      opacity: 1;
+      transform: rotate(0deg) scale(1);
+    }
   }
   .token-area {
     display: grid;

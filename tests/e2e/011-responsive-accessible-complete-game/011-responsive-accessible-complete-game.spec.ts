@@ -108,7 +108,7 @@ test('the complete table is responsive and accessible by keyboard and touch', as
   await expect(herdStack).toHaveClass(/dragging/);
   await page.mouse.up();
   await expect(goldReturn).toHaveAttribute('aria-pressed', 'true');
-  await expect(goldReturn.locator('.loaded-return-card')).not.toHaveClass(/click-loaded/);
+  await expect(page.locator('.return-flight-card')).toHaveCount(0);
 
   const confirmExchange = page.getByRole('button', { name: 'Trade 2 for 2' });
   await page.getByRole('button', { name: 'Clear' }).focus();
@@ -142,15 +142,16 @@ test('the complete table is responsive and accessible by keyboard and touch', as
             expect(Math.abs(box.width - box.height)).toBeLessThanOrEqual(1);
             expect(Math.abs(box.width - cardBoxes[0].width)).toBeLessThanOrEqual(1);
           }
-          const herdCards = await page.locator('.camel-pile img').evaluateAll((cards) =>
+          const ownHerdCards = await page.locator('.own-camel-card').evaluateAll((cards) =>
             cards.map((card) => {
               const style = getComputedStyle(card);
               return { width: parseFloat(style.width), height: parseFloat(style.height) };
             })
           );
-          expect(herdCards.length).toBeGreaterThan(0);
-          for (const box of herdCards) {
+          expect(ownHerdCards.length).toBeGreaterThan(0);
+          for (const box of ownHerdCards) {
             expect(Math.abs(box.width - box.height)).toBeLessThanOrEqual(1);
+            expect(Math.abs(box.width - cardBoxes[0].width)).toBeLessThanOrEqual(1);
           }
         }
       },
@@ -208,9 +209,10 @@ test('the complete table is responsive and accessible by keyboard and touch', as
           await expect(page.getByRole('heading', { name: 'Token supplies' })).toBeVisible();
           await expect(page.locator('.opponent')).toContainText('values hidden');
           await expect(page.locator('.opponent-herd')).toHaveAccessibleName(
-            /Belen has \d+ camels in their herd/
+            /Belen has \d+ camels? in their herd/
           );
           await expect(page.locator('.own-herd')).toContainText('Your herd');
+          await expect(page.locator('.own-herd-label strong')).toHaveText(/\d+ camels?/);
           await expect(page.locator('.opponent')).toContainText('2 / 7 cards');
           await expect(page.locator('.opponent-hand .opponent-card-back')).toHaveCount(2);
           await expect(page.locator('.opponent-hand')).toHaveAttribute(
