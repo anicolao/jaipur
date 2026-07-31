@@ -3,7 +3,7 @@
   import '@fontsource/atkinson-hyperlegible/700.css';
   import '@fontsource/cormorant-garamond/700.css';
   import { base } from '$app/paths';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import QRCode from 'qrcode';
   import PieceArt from '$lib/PieceArt.svelte';
   import TokenChip from '$lib/TokenChip.svelte';
@@ -40,12 +40,29 @@
   let startingRound = false;
   let repositoryReady = false;
   let knownActivityIds = new Set<string>();
-  let notice = $state<{ key: number; text: string } | null>(null);
-  let noticeKey = 0;
-  let noticeTimer: ReturnType<typeof setTimeout> | undefined;
-  let selectedHands = $state<Record<string, string[]>>({});
-  let selectedCamels = $state<Record<string, string | null>>({});
-  let selectedMarket = $state<Record<string, string[]>>({});
+  let cardFlights = $state<Array<{
+    key: number;
+    image: string;
+    startLeft: number;
+    startTop: number;
+    startSize: number;
+    endLeft: number;
+    endTop: number;
+    endSize: number;
+    delay: number;
+  }>>([]);
+  let flightSequence = 0;
+  let tokenFlights = $state<Array<{
+    key: number;
+    token: Token;
+    startLeft: number;
+    startTop: number;
+    startSize: number;
+    endLeft: number;
+    endTop: number;
+    endSize: number;
+    delay: number;
+  }>>([]);
   let busy = $state(false);
 
   const componentImage = (kind: Good | 'camel' | 'seal' | 'card-back') =>
@@ -64,7 +81,7 @@
         throw new Error('Could not reserve a tabletop. Reload to try again.');
       }
 
-      const joinBase = `${location.origin}${base}/`;
+      const joinBase = `${location.origin}${base}/hand/`;
       seatQrs = await Promise.all(([1, 2] as const).map(async (seat) => {
         const url = `${joinBase}?gameId=${gameId}&seat=${seat}`;
         return {
@@ -83,6 +100,7 @@
       repository = attached;
       attached.subscribe(
         (events) => {
+          const previous = lobby;
           const next = reduceGame(events);
           const newActivities = repositoryReady
             ? next.activity.filter(({ id }) => !knownActivityIds.has(id))
@@ -91,8 +109,7 @@
           for (const activity of next.activity) knownActivityIds.add(activity.id);
           repositoryReady = true;
           if (newActivities.length > 0) {
-            resetSelections();
-            showNotice(newActivities.at(-1)!);
+            void animateActivities(newActivities, previous, next);
           }
           void maybeOpenFirstRound();
         },
@@ -129,6 +146,7 @@
     const kinds = activity.cardKinds?.map((kind) => label(kind as Good | 'camel')) ?? [];
     switch (activity.type) {
       case 'tabletop/created': return 'opened the tabletop';
+      case 'tabletop/intent': return 'adjusted a private selection';
       case 'game/created': return 'opened the bazaar';
       case 'player/joined': return 'joined the table';
       case 'player/ready': return activity.ready ? 'is ready' : 'is no longer ready';
@@ -139,19 +157,6 @@
       case 'cards/sold': return `sold ${count} ${kinds[0] ?? 'goods'}${activity.tokenCount ? ` · ${activity.tokenCount} tokens` : ''}`;
       case 'game/rematched': return 'started a rematch';
     }
-  }
-
-  function activityText(activity: GameActivity): string {
-    let text = `${playerName(activity.actorUid)} ${activityDescription(activity)}`;
-    if (activity.roundWinnerUid) text += ` · ${playerName(activity.roundWinnerUid)} won the round`;
-    if (activity.gameWinnerUid) text += ' and the match';
-    return text;
-  }
-
-  function showNotice(activity: GameActivity) {
-    if (noticeTimer) clearTimeout(noticeTimer);
-    notice = { key: ++noticeKey, text: activityText(activity) };
-    noticeTimer = setTimeout(() => notice = null, 2800);
   }
 
   async function maybeOpenFirstRound() {
@@ -194,49 +199,24 @@
     }
   }
 
-  function handSelection(uid: string): string[] {
-    return selectedHands[uid] ?? [];
+  function selectedReturnIds(uid: string): string[] {
+    return lobby.tabletopIntents[uid]?.selectedReturnIds ?? [];
   }
 
-  function marketSelection(uid: string): string[] {
-    return selectedMarket[uid] ?? [];
+  function exchangeLoads(uid: string): Record<string, string> {
+    return lobby.tabletopIntents[uid]?.exchangeLoads ?? {};
   }
 
-  function selectedCamel(uid: string): string | null {
-    return selectedCamels[uid] ?? null;
-  }
-
-  function returnedIds(uid: string): string[] {
-    return [...handSelection(uid), ...(selectedCamel(uid) ? [selectedCamel(uid)!] : [])];
-  }
-
-  function resetSelections() {
-    selectedHands = {};
-    selectedCamels = {};
-    selectedMarket = {};
-  }
-
-  function toggleHand(uid: string, cardId: string) {
-    if (lobby.round?.activeUid !== uid) return;
-    const current = handSelection(uid);
-    selectedHands = {
-      ...selectedHands,
-      [uid]: current.includes(cardId)
-        ? current.filter((id) => id !== cardId)
-        : [...current, cardId]
-    };
-    selectedMarket = { ...selectedMarket, [uid]: [] };
-  }
-
-  function toggleCamel(uid: string) {
-    if (lobby.round?.activeUid !== uid) return;
-    const camelId = lobby.round.herds[uid]?.at(-1)?.id;
-    if (!camelId) return;
-    selectedCamels = {
-      ...selectedCamels,
-      [uid]: selectedCamel(uid) === camelId ? null : camelId
-    };
-    selectedMarket = { ...selectedMarket, [uid]: [] };
+  async function publishIntent(
+    uid: string,
+    selectedReturnIds: string[],
+    loads: Record<string, string>
+  ) {
+    if (!lobby.round) return;
+    await appendFor(uid, 'tabletop/intent', {
+      selectedReturnIds,
+      exchangeLoads: loads
+    });
   }
 
   async function chooseMarket(card: Card) {
@@ -246,33 +226,42 @@
       await appendFor(uid, 'cards/taken-camels', {});
       return;
     }
-    const returns = returnedIds(uid);
-    if (returns.length >= 2) {
-      const current = marketSelection(uid);
-      selectedMarket = {
-        ...selectedMarket,
-        [uid]: current.includes(card.id)
-          ? current.filter((id) => id !== card.id)
-          : current.length < returns.length
-            ? [...current, card.id]
-            : current
-      };
+    await appendFor(uid, 'cards/taken-one', { cardId: card.id });
+  }
+
+  async function chooseExchangeTarget(uid: string, marketCardId: string) {
+    if (!lobby.round || lobby.round.activeUid !== uid || busy) return;
+    const loads = exchangeLoads(uid);
+    const loadedReturn = loads[marketCardId];
+    if (loadedReturn) {
+      const nextLoads = Object.fromEntries(
+        Object.entries(loads).filter(([candidate]) => candidate !== marketCardId)
+      );
+      await publishIntent(uid, [...selectedReturnIds(uid), loadedReturn], nextLoads);
       return;
     }
-    await appendFor(uid, 'cards/taken-one', { cardId: card.id });
+    const returnCardId = selectedReturnIds(uid)[0];
+    if (!returnCardId) return;
+    startIntentFlight(uid, returnCardId, marketCardId);
+    await publishIntent(
+      uid,
+      selectedReturnIds(uid).filter((id) => id !== returnCardId),
+      { ...loads, [marketCardId]: returnCardId }
+    );
   }
 
   async function confirmExchange(uid: string) {
     if (!lobby.round) return;
-    const takenCardIds = marketSelection(uid);
-    const returnedCardIds = returnedIds(uid);
+    const loads = exchangeLoads(uid);
+    const takenCardIds = Object.keys(loads);
+    const returnedCardIds = Object.values(loads);
     if (!isLegalExchange(lobby.round, uid, takenCardIds, returnedCardIds)) return;
     await appendFor(uid, 'cards/exchanged', { takenCardIds, returnedCardIds });
   }
 
   function saleIds(uid: string, kind: Good): string[] {
     if (!lobby.round) return [];
-    const selected = handSelection(uid);
+    const selected = selectedReturnIds(uid);
     if (selected.length > 0) {
       return selected.every((id) => lobby.round?.hands[uid]?.find((card) => card.id === id)?.kind === kind)
         ? selected
@@ -283,7 +272,7 @@
 
   function canSell(kind: Good): boolean {
     const uid = lobby.round?.activeUid;
-    if (!uid || !lobby.round) return false;
+    if (!uid || !lobby.round || busy || Object.keys(exchangeLoads(uid)).length > 0) return false;
     const ids = saleIds(uid, kind);
     return isLegalSale(lobby.round, uid, kind, ids);
   }
@@ -324,6 +313,157 @@
       roundNumber: 1
     });
   }
+
+  function box(selector: string): DOMRect | undefined {
+    return document.querySelector<HTMLElement>(selector)?.getBoundingClientRect();
+  }
+
+  function cardFlight(
+    source: DOMRect | undefined,
+    destination: DOMRect | undefined,
+    image: string,
+    delay = 0
+  ) {
+    if (!source || !destination) return;
+    const startSize = Math.min(source.width, source.height);
+    const endSize = Math.min(destination.width, destination.height, startSize);
+    const key = ++flightSequence;
+    cardFlights = [...cardFlights, {
+      key,
+      image,
+      startLeft: source.left + (source.width - startSize) / 2,
+      startTop: source.top + (source.height - startSize) / 2,
+      startSize,
+      endLeft: destination.left + (destination.width - endSize) / 2,
+      endTop: destination.top + (destination.height - endSize) / 2,
+      endSize,
+      delay
+    }];
+    setTimeout(() => cardFlights = cardFlights.filter((flight) => flight.key !== key), 900 + delay);
+  }
+
+  function startIntentFlight(uid: string, returnCardId: string, marketCardId: string) {
+    const fromHand = lobby.round?.hands[uid]?.some(({ id }) => id === returnCardId);
+    const source = fromHand
+      ? box(`[data-table-hand-card="${CSS.escape(returnCardId)}"]`)
+      : box(`[data-table-herd="${CSS.escape(uid)}"] img:last-child`);
+    const destination = box(`[data-table-exchange-target="${CSS.escape(marketCardId)}"]`);
+    cardFlight(source, destination, componentImage('card-back'));
+  }
+
+  async function animateActivities(
+    activities: GameActivity[],
+    previous: GameState,
+    next: GameState
+  ) {
+    const movements: Array<{
+      source: DOMRect | undefined;
+      destinationSelector: string;
+      image: string;
+      delay: number;
+    }> = [];
+    const tokenMovements: Array<{
+      source: DOMRect | undefined;
+      destinationSelector: string;
+      token: Token;
+      delay: number;
+    }> = [];
+
+    for (const activity of activities) {
+      const uid = activity.actorUid;
+      if (activity.type === 'cards/taken-one' || activity.type === 'cards/taken-camels') {
+        activity.cardIds?.forEach((cardId, index) => {
+          const kind = activity.cardKinds?.[index] as Good | 'camel' | undefined;
+          movements.push({
+            source: box(`[data-market-card-id="${CSS.escape(cardId)}"]`),
+            destinationSelector: kind === 'camel'
+              ? `[data-table-herd="${CSS.escape(uid)}"]`
+              : `[data-table-hand="${CSS.escape(uid)}"]`,
+            image: componentImage(kind ?? 'card-back'),
+            delay: index * 70
+          });
+        });
+      }
+      if (activity.type === 'cards/exchanged') {
+        activity.cardIds?.forEach((cardId, index) => movements.push({
+          source: box(`[data-market-card-id="${CSS.escape(cardId)}"]`),
+          destinationSelector: `[data-table-hand="${CSS.escape(uid)}"]`,
+          image: componentImage((activity.cardKinds?.[index] as Good) ?? 'card-back'),
+          delay: index * 70
+        }));
+        const previousLoads = previous.tabletopIntents[uid]?.exchangeLoads ?? {};
+        activity.returnedCardIds?.forEach((cardId, index) => {
+          const targetId = Object.entries(previousLoads).find(([, returnId]) => returnId === cardId)?.[0];
+          movements.push({
+            source: targetId ? box(`[data-table-exchange-target="${CSS.escape(targetId)}"]`) : undefined,
+            destinationSelector: `[data-market-card-id="${CSS.escape(cardId)}"]`,
+            image: componentImage('card-back'),
+            delay: index * 70
+          });
+        });
+      }
+      if (activity.type === 'cards/sold') {
+        activity.cardIds?.forEach((cardId, index) => movements.push({
+          source: box(`[data-table-hand-card="${CSS.escape(cardId)}"]`),
+          destinationSelector: `.token-rail`,
+          image: componentImage('card-back'),
+          delay: index * 55
+        }));
+        const oldTokens = new Set([
+          ...(previous.round?.ownedGoodsTokens[uid] ?? []),
+          ...(previous.round?.ownedBonusTokens[uid] ?? [])
+        ].map(({ id }) => id));
+        const awards = [
+          ...(next.round?.ownedGoodsTokens[uid] ?? []),
+          ...(next.round?.ownedBonusTokens[uid] ?? [])
+        ].filter(({ id }) => !oldTokens.has(id));
+        awards.forEach((token, index) => tokenMovements.push({
+          source: token.kind.startsWith('bonus-')
+            ? box('.bonus-row')
+            : box(`[data-token-kind="${CSS.escape(token.kind)}"] .rail-chip`),
+          destinationSelector: `[data-table-tokens="${CSS.escape(uid)}"]`,
+          token,
+          delay: 180 + index * 80
+        }));
+      }
+    }
+
+    const previousMarketIds = new Set(previous.round?.market.map(({ id }) => id) ?? []);
+    const returnedIds = new Set(activities.flatMap(({ returnedCardIds }) => returnedCardIds ?? []));
+    const refills = next.round?.market.filter(
+      ({ id }) => !previousMarketIds.has(id) && !returnedIds.has(id)
+    ) ?? [];
+    refills.forEach((card, index) => movements.push({
+      source: box('.deck'),
+      destinationSelector: `[data-market-card-id="${CSS.escape(card.id)}"]`,
+      image: componentImage('card-back'),
+      delay: 120 + index * 70
+    }));
+
+    await tick();
+    movements.forEach(({ source, destinationSelector, image, delay }) =>
+      cardFlight(source, box(destinationSelector), image, delay)
+    );
+    tokenMovements.forEach(({ source, destinationSelector, token, delay }) => {
+      const destination = box(destinationSelector);
+      if (!source || !destination) return;
+      const startSize = Math.min(source.width, source.height, 64);
+      const endSize = Math.min(destination.width, destination.height, startSize);
+      const key = ++flightSequence;
+      tokenFlights = [...tokenFlights, {
+        key,
+        token,
+        startLeft: source.left + (source.width - startSize) / 2,
+        startTop: source.top + (source.height - startSize) / 2,
+        startSize,
+        endLeft: destination.left + (destination.width - endSize) / 2,
+        endTop: destination.top + (destination.height - endSize) / 2,
+        endSize,
+        delay
+      }];
+      setTimeout(() => tokenFlights = tokenFlights.filter((flight) => flight.key !== key), 1000 + delay);
+    });
+  }
 </script>
 
 {#snippet joinSeat(seat: Seat)}
@@ -346,7 +486,8 @@
 
 {#snippet playerSeat(seat: Seat, player: Player)}
   {@const isActive = lobby.round?.status === 'active' && lobby.round.activeUid === player.uid}
-  {@const selectedReturns = returnedIds(player.uid)}
+  {@const selectedReturns = selectedReturnIds(player.uid)}
+  {@const loads = exchangeLoads(player.uid)}
   <section
     class="player-seat"
     class:active={isActive}
@@ -363,38 +504,35 @@
       <span>{lobby.seals[player.uid] ?? 0} / 2 seals</span>
     </header>
     <div class="seat-body">
-      <div class="tabletop-hand" data-hand-destination={player.uid}>
+      <div
+        class="tabletop-hand"
+        data-table-hand={player.uid}
+        role="img"
+        aria-label={`${player.displayName} has ${lobby.round?.hands[player.uid]?.length ?? 0} face-down cards`}
+      >
         {#each lobby.round?.hands[player.uid] ?? [] as card}
-          <button
-            type="button"
-            class:selected={handSelection(player.uid).includes(card.id)}
-            disabled={!isActive || busy}
-            aria-pressed={handSelection(player.uid).includes(card.id)}
-            aria-label={`${handSelection(player.uid).includes(card.id) ? 'Deselect' : 'Select'} ${label(card.kind)} ${card.id}`}
-            data-card-id={card.id}
-            onclick={() => toggleHand(player.uid, card.id)}
-          >
-            <PieceArt kind={card.kind} label={label(card.kind)} detail={card.id} />
-          </button>
+          <img
+            src={componentImage('card-back')}
+            alt=""
+            data-table-hand-card={card.id}
+            draggable="false"
+          />
         {/each}
       </div>
-      <button
-        type="button"
+      <div
         class="tabletop-herd"
-        class:selected={Boolean(selectedCamel(player.uid))}
-        disabled={!isActive || (lobby.round?.herds[player.uid]?.length ?? 0) === 0}
-        aria-pressed={Boolean(selectedCamel(player.uid))}
-        aria-label={`Select one of ${lobby.round?.herds[player.uid]?.length ?? 0} camels for exchange`}
-        onclick={() => toggleCamel(player.uid)}
+        data-table-herd={player.uid}
+        role="img"
+        aria-label={`${player.displayName}'s camel herd`}
       >
         <span class="herd-pile" aria-hidden="true">
           {#each (lobby.round?.herds[player.uid] ?? []).slice(-5) as camel, index}
             <img src={componentImage('camel')} alt="" style={`--pile-index:${index}`} />
           {/each}
         </span>
-        <span>Herd <strong>{lobby.round?.herds[player.uid]?.length ?? 0}</strong></span>
-      </button>
-      <div class="seat-tokens" data-token-destination={player.uid}>
+        <span>Herd</span>
+      </div>
+      <div class="seat-tokens" data-table-tokens={player.uid}>
         <span class="earned-chip-row" aria-hidden="true">
           {#each ownedTokens(player.uid).slice(-6) as token}
             <TokenChip {token} />
@@ -404,19 +542,17 @@
       </div>
     </div>
     <footer aria-live="polite">
-      {#if isActive && selectedReturns.length >= 2}
-        <span>Select {selectedReturns.length} market goods ({marketSelection(player.uid).length} selected).</span>
+      {#if isActive && Object.keys(loads).length >= 2}
+        <span>{Object.keys(loads).length} face-down returns placed.</span>
         <button
           type="button"
-          disabled={!lobby.round || !isLegalExchange(lobby.round, player.uid, marketSelection(player.uid), selectedReturns)}
+          disabled={!lobby.round || !isLegalExchange(lobby.round, player.uid, Object.keys(loads), Object.values(loads))}
           onclick={() => confirmExchange(player.uid)}
-        >Trade {marketSelection(player.uid).length} for {selectedReturns.length}</button>
-        <button class="secondary" type="button" onclick={resetSelections}>Clear</button>
-      {:else if isActive && handSelection(player.uid).length > 0}
-        <span>{handSelection(player.uid).length} selected · tap a matching token stack to sell.</span>
-        <button class="secondary" type="button" onclick={resetSelections}>Clear</button>
+        >Trade {Object.keys(loads).length} for {Object.values(loads).length}</button>
+      {:else if isActive && selectedReturns.length > 0}
+        <span>{selectedReturns.length} selected on the private phone · tap dashed market targets or a token stack.</span>
       {:else if isActive}
-        <span>Tap a market card to take it, or select cards here to sell or trade.</span>
+        <span>Choose private cards on the phone, then use the public market and token targets here.</span>
       {:else}
         <span>Watch the market while the other trader acts.</span>
       {/if}
@@ -468,18 +604,42 @@
     {#if lobby.round?.status === 'active'}
       <div class="market-cards">
         {#each lobby.round.market as card}
-          <button
-            type="button"
-            class:camel={card.kind === 'camel'}
-            class:selected={marketSelection(lobby.round.activeUid).includes(card.id)}
-            disabled={busy || (card.kind !== 'camel' && (lobby.round.hands[lobby.round.activeUid]?.length ?? 0) >= 7 && returnedIds(lobby.round.activeUid).length < 2)}
-            aria-pressed={marketSelection(lobby.round.activeUid).includes(card.id)}
-            aria-label={card.kind === 'camel' ? `Take all ${lobby.round.market.filter(({ kind }) => kind === 'camel').length} camels` : `Choose ${label(card.kind)} ${card.id}`}
-            data-card-id={card.id}
-            onclick={() => chooseMarket(card)}
-          >
-            <PieceArt kind={card.kind} label={label(card.kind)} detail={card.id} />
-          </button>
+          {@const activeUid = lobby.round.activeUid}
+          {@const loadedReturnId = exchangeLoads(activeUid)[card.id]}
+          <div class="table-market-slot">
+            <button
+              type="button"
+              class="market-card"
+              class:camel={card.kind === 'camel'}
+              disabled={busy || (card.kind !== 'camel' && (lobby.round.hands[activeUid]?.length ?? 0) >= 7)}
+              aria-label={card.kind === 'camel' ? `Take all ${lobby.round.market.filter(({ kind }) => kind === 'camel').length} camels` : `Take ${label(card.kind)} ${card.id}`}
+              data-market-card-id={card.id}
+              onclick={() => chooseMarket(card)}
+            >
+              <PieceArt kind={card.kind} label={label(card.kind)} detail={card.id} />
+            </button>
+            {#if card.kind !== 'camel'}
+              <button
+                type="button"
+                class="table-exchange-target"
+                class:loaded={Boolean(loadedReturnId)}
+                disabled={busy || (!loadedReturnId && selectedReturnIds(activeUid).length === 0)}
+                aria-pressed={Boolean(loadedReturnId)}
+                aria-label={loadedReturnId
+                  ? `Return the face-down card below ${label(card.kind)} to the phone selection`
+                  : `Place a selected private card face-down below ${label(card.kind)}`}
+                data-table-exchange-target={card.id}
+                onclick={() => chooseExchangeTarget(activeUid, card.id)}
+              >
+                {#if loadedReturnId}
+                  <img src={componentImage('card-back')} alt="" data-loaded-return={loadedReturnId} />
+                {:else}
+                  <span aria-hidden="true">＋</span>
+                  <small>Return</small>
+                {/if}
+              </button>
+            {/if}
+          </div>
         {/each}
       </div>
     {:else if lobby.round?.status === 'complete'}
@@ -544,13 +704,21 @@
 
   <div class="top-log">{@render gameLog(true)}</div>
   <div class="bottom-log">{@render gameLog(false)}</div>
-  {#if notice}
-    <div class="shared-notice" data-notice-key={notice.key} aria-live="polite">
-      <span class="notice-top">{notice.text}</span>
-      <span>{notice.text}</span>
-    </div>
-  {/if}
   <p class="table-status" data-status={statusKind}>{status} · Build {buildHash}</p>
+  {#each cardFlights as flight (flight.key)}
+    <span
+      class="table-card-flight"
+      aria-hidden="true"
+      style={`--start-left:${flight.startLeft}px;--start-top:${flight.startTop}px;--start-size:${flight.startSize}px;--end-left:${flight.endLeft}px;--end-top:${flight.endTop}px;--end-size:${flight.endSize}px;--flight-delay:${flight.delay}ms`}
+    ><img src={flight.image} alt="" /></span>
+  {/each}
+  {#each tokenFlights as flight (flight.key)}
+    <span
+      class="table-token-flight"
+      aria-hidden="true"
+      style={`--start-left:${flight.startLeft}px;--start-top:${flight.startTop}px;--start-size:${flight.startSize}px;--end-left:${flight.endLeft}px;--end-top:${flight.endTop}px;--end-size:${flight.endSize}px;--flight-delay:${flight.delay}ms`}
+    ><TokenChip token={flight.token} /></span>
+  {/each}
 </main>
 
 <style>
@@ -636,7 +804,7 @@
   .active .turn-state { background: #a6442d; color: white; }
   .seat-body { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr) clamp(5rem, 10vw, 8rem) clamp(8rem, 14vw, 13rem); align-items: center; gap: 0.5rem; }
   .tabletop-hand { display: flex; min-width: 0; height: 100%; align-items: center; }
-  .tabletop-hand button, .market-cards button {
+  .tabletop-hand > img, .market-card {
     position: relative;
     width: clamp(3.7rem, 9.8vh, 6rem);
     height: clamp(3.7rem, 9.8vh, 6rem);
@@ -647,11 +815,10 @@
     border-radius: 0.55rem;
     background: #183a37;
     color: white;
+    object-fit: cover;
   }
-  .tabletop-hand button + button { margin-left: clamp(-1.1rem, -1.9vw, -0.35rem); }
-  .tabletop-hand button.selected, .market-cards button.selected { z-index: 3; border-color: #d38b21; box-shadow: 0 0 0 3px #d38b21; transform: translateY(-0.25rem); }
-  .tabletop-hand button:disabled { opacity: 1; }
-  .tabletop-hand :global(.piece-image), .market-cards :global(.piece-image) { width: 100%; height: 100%; object-fit: cover; }
+  .tabletop-hand > img + img { margin-left: clamp(-1.1rem, -1.9vw, -0.35rem); }
+  .market-card :global(.piece-image) { width: 100%; height: 100%; object-fit: cover; }
   .tabletop-herd {
     display: grid;
     min-width: 44px;
@@ -659,21 +826,15 @@
     grid-template-columns: 1fr;
     place-items: center;
     padding: 0.15rem;
-    border: 2px solid transparent;
     border-radius: 0.55rem;
-    background: transparent;
-    color: inherit;
   }
-  .tabletop-herd.selected { border-color: #d38b21; }
-  .tabletop-herd:disabled { opacity: 1; }
-  .herd-pile { position: relative; width: 4.8rem; height: 2.8rem; }
-  .herd-pile img { position: absolute; left: calc(var(--pile-index) * 0.55rem); width: 2.8rem; height: 2.8rem; border: 1px solid #315f58; border-radius: 0.35rem; object-fit: cover; transform: rotate(calc((var(--pile-index) - 2) * 2deg)); }
+  .herd-pile { position: relative; width: 6.8rem; height: clamp(3.7rem, 9.8vh, 6rem); }
+  .herd-pile img { position: absolute; left: calc(var(--pile-index) * 0.55rem); width: clamp(3.7rem, 9.8vh, 6rem); height: clamp(3.7rem, 9.8vh, 6rem); border: 2px solid #a6442d; border-radius: 0.55rem; object-fit: cover; transform: rotate(calc((var(--pile-index) - 2) * 2deg)); }
   .seat-tokens { display: grid; min-width: 0; gap: 0.15rem; font-size: clamp(0.65rem, 1.3vmin, 0.82rem); }
   .earned-chip-row { display: flex; height: 2.5rem; align-items: center; }
   .earned-chip-row :global(.token-chip) { width: 2.4rem; height: 2.4rem; margin-right: -0.85rem; }
   .player-seat > footer { display: flex; min-height: 2rem; align-items: center; justify-content: center; gap: 0.45rem; font-size: clamp(0.62rem, 1.2vmin, 0.78rem); text-align: center; }
   .player-seat footer button, .round-result button { min-height: 36px; padding: 0.3rem 0.65rem; border: 0; border-radius: 99rem; background: #a6442d; color: white; font-weight: 700; }
-  .player-seat footer button.secondary { border: 1px solid #8e826b; background: #fffaf0; color: #183a37; }
   .shared-market {
     grid-column: 1;
     grid-row: 2;
@@ -690,8 +851,15 @@
   .deck { display: flex; align-items: center; gap: 0.3rem; }
   .deck img { width: 1.5rem; height: 1.9rem; border-radius: 0.2rem; object-fit: cover; }
   .market-cards { display: flex; min-height: 0; align-items: center; justify-content: center; gap: clamp(0.35rem, 1.6vw, 1.4rem); }
-  .market-cards button { width: clamp(4.4rem, 15vh, 8.5rem); height: clamp(4.4rem, 15vh, 8.5rem); }
-  .market-cards button.camel { border-color: #a6442d; }
+  .table-market-slot { display: grid; min-width: 0; place-items: center; gap: clamp(0.2rem, 0.7vh, 0.4rem); }
+  .market-card { width: clamp(4.4rem, 15vh, 8.5rem); height: clamp(4.4rem, 15vh, 8.5rem); }
+  .market-card.camel { border-color: #a6442d; }
+  .table-exchange-target { display: grid; width: clamp(4.4rem, 15vh, 8.5rem); min-height: clamp(2.7rem, 6.5vh, 4rem); grid-template-columns: auto 1fr; place-items: center; gap: 0.2rem; padding: 0.2rem; border: 2px dashed #315f58; border-radius: 0.6rem; background: rgb(255 250 240 / 72%); color: #315f58; font-weight: 700; }
+  .table-exchange-target:disabled { opacity: 0.48; }
+  .table-exchange-target.loaded { border-style: solid; border-color: #d38b21; background: #fff4d6; opacity: 1; }
+  .table-exchange-target > span { font-size: 1.2rem; }
+  .table-exchange-target small { font-size: clamp(0.55rem, 1.1vmin, 0.72rem); }
+  .table-exchange-target img { width: clamp(2.25rem, 5.7vh, 3.4rem); height: clamp(2.25rem, 5.7vh, 3.4rem); border: 1px solid #315f58; border-radius: 0.35rem; object-fit: cover; }
   .round-result { display: flex; align-items: center; justify-content: center; gap: 1rem; text-align: center; }
   .round-result > img { width: clamp(3.5rem, 10vh, 6rem); }
   .tabletop-mark { display: grid; place-content: center; place-items: center; gap: 0.25rem; }
@@ -725,11 +893,13 @@
   .corner-log.inverted ol { top: calc(100% + 0.35rem); right: auto; bottom: auto; left: 0; }
   .corner-log li { padding: 0.22rem 0.3rem; border-radius: 0.25rem; background: #f2e8d3; font-size: 0.68rem; }
   .corner-log li + li { margin-top: 0.18rem; }
-  .shared-notice { position: fixed; z-index: 30; top: 50%; left: 50%; display: grid; gap: 0.35rem; pointer-events: none; transform: translate(-50%, -50%); }
-  .shared-notice span { width: max-content; max-width: 70vw; padding: 0.4rem 0.7rem; border: 1px solid #8e826b; border-radius: 99rem; background: #fffaf0; box-shadow: 0 0.4rem 0.8rem rgb(10 32 30 / 30%); font-size: clamp(0.7rem, 1.5vmin, 0.95rem); font-weight: 700; animation: shared-action 2800ms ease both; }
-  .shared-notice .notice-top { transform: rotate(180deg); animation-name: shared-action-top; }
-  @keyframes shared-action { 0% { opacity: 0; transform: translateY(0.6rem); } 12%, 82% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-0.3rem); } }
-  @keyframes shared-action-top { 0% { opacity: 0; transform: rotate(180deg) translateY(0.6rem); } 12%, 82% { opacity: 1; transform: rotate(180deg); } 100% { opacity: 0; transform: rotate(180deg) translateY(-0.3rem); } }
+  .table-card-flight, .table-token-flight { position: fixed; z-index: 40; top: var(--start-top); left: var(--start-left); width: var(--start-size); height: var(--start-size); pointer-events: none; animation: table-flight 760ms cubic-bezier(0.2, 0.75, 0.22, 1) var(--flight-delay) both; }
+  .table-card-flight img { width: 100%; height: 100%; border: 2px solid #315f58; border-radius: 0.55rem; box-shadow: 0 0.7rem 1rem rgb(0 0 0 / 28%); object-fit: cover; }
+  .table-token-flight :global(.token-chip) { width: 100%; height: 100%; filter: drop-shadow(0 0.5rem 0.5rem rgb(0 0 0 / 28%)); }
+  @keyframes table-flight {
+    0% { opacity: 0.96; transform: translate(0, 0) rotate(-3deg); }
+    100% { width: var(--end-size); height: var(--end-size); opacity: 1; transform: translate(calc(var(--end-left) - var(--start-left)), calc(var(--end-top) - var(--start-top))) rotate(0); }
+  }
   .table-status { position: fixed; z-index: 15; right: calc(var(--rail-width) + 1rem); bottom: 0.4rem; margin: 0; color: #315f58; font-size: 0.65rem; font-weight: 700; }
   .table-status[data-status='error'] { color: #a3212a; }
   @media (prefers-reduced-motion: reduce) {

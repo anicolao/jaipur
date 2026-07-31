@@ -67,6 +67,12 @@ export interface GameState extends LobbyState {
   seals: Record<string, number>;
   winnerUid: string | null;
   epoch: number;
+  tabletopIntents: Record<string, TabletopIntent>;
+}
+
+export interface TabletopIntent {
+  selectedReturnIds: string[];
+  exchangeLoads: Record<string, string>;
 }
 
 const CARD_COUNTS: Record<CardKind, number> = {
@@ -273,6 +279,7 @@ export function reduceGame(events: GameEvent[]): GameState {
   let round: RoundState | null = null;
   let winnerUid: string | null = null;
   let epoch = 1;
+  const tabletopIntents: Record<string, TabletopIntent> = {};
 
   const actionActorUid = (event: GameEvent): string => {
     const requestedPlayerUid = event.payload.playerUid;
@@ -289,6 +296,7 @@ export function reduceGame(events: GameEvent[]): GameState {
 
   const finishAction = (actorUid: string): Pick<GameActivity, 'roundWinnerUid' | 'gameWinnerUid'> => {
     if (!round) return {};
+    delete tabletopIntents[actorUid];
     round.activeUid = playerUids.find((uid) => uid !== actorUid) ?? round.activeUid;
     round.turnNumber += 1;
     const endReason = roundEndReason(round);
@@ -360,6 +368,7 @@ export function reduceGame(events: GameEvent[]): GameState {
       );
       round.number = rounds.length + 1;
       rounds.push(round);
+      for (const uid of playerUids) delete tabletopIntents[uid];
       lobby.activity.push({
         id: event.id,
         type: event.type,
@@ -371,6 +380,45 @@ export function reduceGame(events: GameEvent[]): GameState {
     }
 
     if (!round) continue;
+    if (event.type === 'tabletop/intent') {
+      const actorUid = actionActorUid(event);
+      const selectedReturnIds = event.payload.selectedReturnIds;
+      const exchangeLoads = event.payload.exchangeLoads;
+      const availableIds = new Set([
+        ...(round.hands[actorUid] ?? []).map(({ id }) => id),
+        ...(round.herds[actorUid] ?? []).map(({ id }) => id)
+      ]);
+      const marketGoodIds = new Set(
+        round.market.filter(({ kind }) => kind !== 'camel').map(({ id }) => id)
+      );
+      const loadEntries = exchangeLoads && typeof exchangeLoads === 'object' && !Array.isArray(exchangeLoads)
+        ? Object.entries(exchangeLoads)
+        : [];
+      const loadedReturnIds = loadEntries.map(([, returnId]) => returnId);
+      if (
+        lobby.mode !== 'tabletop' ||
+        round.status !== 'active' ||
+        actorUid !== round.activeUid ||
+        event.payload.roundNumber !== round.number ||
+        event.payload.turnNumber !== round.turnNumber ||
+        !Array.isArray(selectedReturnIds) ||
+        !selectedReturnIds.every((id): id is string => typeof id === 'string' && availableIds.has(id)) ||
+        new Set(selectedReturnIds).size !== selectedReturnIds.length ||
+        !loadEntries.every(([marketId, returnId]) =>
+          marketGoodIds.has(marketId) && typeof returnId === 'string' && availableIds.has(returnId)
+        ) ||
+        new Set(loadedReturnIds).size !== loadedReturnIds.length ||
+        selectedReturnIds.some((id) => loadedReturnIds.includes(id))
+      ) {
+        lobby.diagnostics.push(`${event.id}: invalid tabletop intent`);
+        continue;
+      }
+      tabletopIntents[actorUid] = {
+        selectedReturnIds: [...selectedReturnIds],
+        exchangeLoads: Object.fromEntries(loadEntries) as Record<string, string>
+      };
+      continue;
+    }
     if (round.status !== 'active') {
       if (event.type.startsWith('cards/')) {
         lobby.diagnostics.push(`${event.id}: action after round end`);
@@ -531,7 +579,7 @@ export function reduceGame(events: GameEvent[]): GameState {
   lobby.activity.sort(
     (left, right) => (eventOrder.get(left.id) ?? 0) - (eventOrder.get(right.id) ?? 0)
   );
-  return { ...lobby, round, rounds, seals, winnerUid, epoch };
+  return { ...lobby, round, rounds, seals, winnerUid, epoch, tabletopIntents };
 }
 
 export function legalSingleGoods(round: RoundState, uid: string): Card[] {

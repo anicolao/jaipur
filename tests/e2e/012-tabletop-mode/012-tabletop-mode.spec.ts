@@ -9,7 +9,7 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   const steps = new TestStepHelper(page, testInfo);
   steps.setMetadata(
     'Shared tabletop mode',
-    'A neutral tabletop creates a fresh room, seats two phone-joined traders on opposite edges, and submits touch actions for the active seat.'
+    'A neutral tabletop keeps public play on the shared screen while each QR-joined phone shows only its trader’s private hand and return selections.'
   );
   await page.goto('/tt?seed=tabletop-e2e');
 
@@ -26,6 +26,8 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   await expect(playerTwoJoin.locator('img')).toHaveAttribute('src', /^data:image\/png;base64,/);
   const playerOneUrl = await playerOneJoin.getAttribute('href');
   const playerTwoUrl = await playerTwoJoin.getAttribute('href');
+  expect(playerOneUrl).toContain('/hand/');
+  expect(playerTwoUrl).toContain('/hand/');
   expect(playerOneUrl).toContain(`gameId=${firstCode}&seat=1`);
   expect(playerTwoUrl).toContain(`gameId=${firstCode}&seat=2`);
 
@@ -35,21 +37,34 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   expect(await freshPage.locator('.shared-market > header strong').textContent()).not.toBe(firstCode);
   await freshPage.close();
 
-  const firstContext = await browser.newContext();
+  const firstContext = await browser.newContext({ viewport: { width: 393, height: 852 } });
   const firstPhone = await firstContext.newPage();
   await firstPhone.goto(playerOneUrl ?? '');
   await firstPhone.getByLabel('Your trader name').fill('Asha');
-  await firstPhone.getByRole('button', { name: 'Join game' }).click();
+  await firstPhone.getByRole('button', { name: 'Take this seat' }).click();
 
-  const secondContext = await browser.newContext();
+  const secondContext = await browser.newContext({ viewport: { width: 393, height: 852 } });
   const secondPhone = await secondContext.newPage();
   await secondPhone.goto(playerTwoUrl ?? '');
   await secondPhone.getByLabel('Your trader name').fill('Belen');
-  await secondPhone.getByRole('button', { name: 'Join game' }).click();
+  await secondPhone.getByRole('button', { name: 'Take this seat' }).click();
 
-  await expect(page.locator('.market-cards button')).toHaveCount(5, { timeout: 5000 });
+  await expect(page.locator('.market-card')).toHaveCount(5, { timeout: 5000 });
   await expect(page.locator('[data-seat="1"] h2')).toHaveText('Asha');
   await expect(page.locator('[data-seat="2"] h2')).toHaveText('Belen');
+  await expect(firstPhone.locator('[data-e2e-hand-controller]')).toBeVisible();
+  await expect(firstPhone.locator('.private-cards')).toBeVisible();
+  await expect(firstPhone.locator('.shared-market, .token-rail')).toHaveCount(0);
+  const privateGoodsCount = await firstPhone.locator('.card-grid button').count() +
+    await secondPhone.locator('.card-grid button').count();
+  await expect(page.locator('.tabletop-hand > img')).toHaveCount(privateGoodsCount);
+  await expect(page.locator('.tabletop-hand :is(.piece-image, [alt="Diamond"], [alt="Gold"])')).toHaveCount(0);
+  await expect.poll(() => firstPhone.evaluate(() => ({
+    width: document.documentElement.scrollWidth,
+    height: document.documentElement.scrollHeight,
+    viewportWidth: innerWidth,
+    viewportHeight: innerHeight
+  }))).toEqual({ width: 393, height: 852, viewportWidth: 393, viewportHeight: 852 });
 
   const topTransform = await page.locator('.inverted-content').evaluate(
     (element) => getComputedStyle(element).transform
@@ -59,13 +74,37 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   await expect(page.locator('.bottom-log .corner-log')).not.toHaveClass(/inverted/);
   await expect(page.locator('.token-rail .rail-token')).toHaveCount(6);
 
-  const action = page.locator('.market-cards button:not(.camel):not(:disabled)').first();
-  await action.click();
+  const privateCards = firstPhone.locator('.card-grid [data-private-card-id]:not(.loaded)');
+  const firstReturnId = await privateCards.nth(0).getAttribute('data-private-card-id');
+  const secondReturnId = await privateCards.nth(1).getAttribute('data-private-card-id');
+  await privateCards.nth(0).click();
+  await expect(firstPhone.locator(`[data-private-card-id="${firstReturnId}"]`)).toHaveAttribute('aria-pressed', 'true');
+  await firstPhone.locator(`[data-private-card-id="${secondReturnId}"]`).click();
+  await expect(firstPhone.locator('.selection-summary strong')).toHaveText('2 selected for the table');
+
+  const targets = page.locator('.table-exchange-target:not(:disabled)');
+  await targets.nth(0).click();
+  await expect(page.locator('.table-card-flight').first()).toBeVisible();
+  await expect(page.locator('.table-exchange-target.loaded')).toHaveCount(1);
+  await expect(firstPhone.locator('.selection-summary strong')).toHaveText('1 selected for the table');
+  await page.locator('.table-exchange-target:not(.loaded):not(:disabled)').first().click();
+  await expect(page.locator('.table-exchange-target.loaded')).toHaveCount(2);
+  await expect(firstPhone.locator('.selection-summary strong')).toHaveText('0 selected for the table');
+  await expect(firstPhone.locator('.card-grid button.loaded')).toHaveCount(2);
+
+  await page.locator('[data-seat="1"] footer button').click();
   await expect(page.locator('[data-seat="2"] .turn-state')).toHaveText('Your turn');
-  await expect(page.locator('.shared-notice')).toContainText(/^Asha took /);
+  await expect(page.locator('.shared-notice')).toHaveCount(0);
   await page.locator('.bottom-log summary').click();
-  await expect(page.locator('.bottom-log li').first()).toContainText(/^Asha took /);
+  await expect(page.locator('.bottom-log li').first()).toContainText(/^Asha traded /);
   await page.locator('.bottom-log summary').click();
+  await expect(page.locator('.table-card-flight, .table-token-flight')).toHaveCount(0, { timeout: 3000 });
+
+  const publicTake = page.locator('.market-card:not(.camel):not(:disabled)').first();
+  await publicTake.click();
+  await expect(page.locator('.table-card-flight').first()).toBeVisible();
+  await expect(page.locator('[data-seat="1"] .turn-state')).toHaveText('Your turn');
+  await expect(page.locator('.table-card-flight, .table-token-flight')).toHaveCount(0, { timeout: 3000 });
 
   // Keep the visual baseline stable after separately proving that every load gets a fresh code.
   await tableCode.evaluate((element) => element.textContent = 'TABLE');
@@ -91,10 +130,17 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
         }
       },
       {
-        spec: 'A tabletop touch action is accepted for Player 1 and advances play to Player 2',
+        spec: 'Private phone selections load face-down table targets and complete an exchange',
         check: async () => {
-          await expect(page.locator('[data-seat="2"] .turn-state')).toHaveText('Your turn');
-          await expect(page.locator('.market-cards button')).toHaveCount(5);
+          await expect(page.locator('[data-seat="1"] .turn-state')).toHaveText('Your turn');
+          await expect(page.locator('.market-card')).toHaveCount(5);
+          await expect(page.locator('.tabletop-hand > img')).toHaveCount(privateGoodsCount + 1);
+        }
+      },
+      {
+        spec: 'Public actions use direct card flights instead of a text notification overlay',
+        check: async () => {
+          await expect(page.locator('.shared-notice, [data-notice-key]')).toHaveCount(0);
         }
       },
       {

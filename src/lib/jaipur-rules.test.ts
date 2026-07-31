@@ -117,6 +117,65 @@ describe('taking one good', () => {
       cardIds: [card.id]
     });
   });
+
+  it('shares private tabletop selections with the host and clears them after the move', () => {
+    const base = (id: string, type: GameEvent['type'], actorUid: string, payload: Record<string, unknown>): GameEvent => ({
+      id,
+      type,
+      actorUid,
+      payload,
+      clientSeq: 1,
+      createdAtMillis: Number(id.match(/\d+/)?.[0] ?? 1),
+      schemaVersion: 1,
+      reducerVersion: 1
+    });
+    const setup = [
+      base('table-1', 'tabletop/created', 'table', { gameId: 'table' }),
+      base('a-2', 'player/joined', 'a', { displayName: 'A', seat: 1 }),
+      base('b-3', 'player/joined', 'b', { displayName: 'B', seat: 2 }),
+      base('a-4', 'player/ready', 'a', { ready: true }),
+      base('b-5', 'player/ready', 'b', { ready: true }),
+      base('table-6', 'round/started', 'table', { seed: 'intent', starterUid: 'a' })
+    ];
+    const started = reduceGame(setup);
+    const returns = started.round!.hands.a.slice(0, 2).map(({ id }) => id);
+    const markets = started.round!.market.filter(({ kind }) => kind !== 'camel').slice(0, 2);
+    const selected = base('a-7', 'tabletop/intent', 'a', {
+      selectedReturnIds: returns,
+      exchangeLoads: {},
+      roundNumber: 1,
+      turnNumber: 1
+    });
+    const loaded = base('table-8', 'tabletop/intent', 'table', {
+      playerUid: 'a',
+      selectedReturnIds: [],
+      exchangeLoads: Object.fromEntries(markets.map(({ id }, index) => [id, returns[index]])),
+      roundNumber: 1,
+      turnNumber: 1
+    });
+    const staged = reduceGame([...setup, selected, loaded]);
+
+    expect(staged.tabletopIntents.a).toEqual({
+      selectedReturnIds: [],
+      exchangeLoads: Object.fromEntries(markets.map(({ id }, index) => [id, returns[index]]))
+    });
+    expect(staged.activity.some(({ type }) => type === 'tabletop/intent')).toBe(false);
+
+    const exchanged = reduceGame([
+      ...setup,
+      selected,
+      loaded,
+      base('table-9', 'cards/exchanged', 'table', {
+        playerUid: 'a',
+        takenCardIds: markets.map(({ id }) => id),
+        returnedCardIds: returns,
+        roundNumber: 1,
+        turnNumber: 1
+      })
+    ]);
+    expect(exchanged.tabletopIntents.a).toBeUndefined();
+    expect(exchanged.round?.activeUid).toBe('b');
+  });
 });
 
 describe('taking camels', () => {

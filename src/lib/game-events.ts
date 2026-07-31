@@ -4,6 +4,7 @@ export const REDUCER_VERSION = 1;
 export type GameEventType =
   | 'game/created'
   | 'tabletop/created'
+  | 'tabletop/intent'
   | 'player/joined'
   | 'player/ready'
   | 'round/started'
