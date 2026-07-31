@@ -1,6 +1,6 @@
 # Shared tabletop mode
 
-A neutral tabletop creates a fresh room, seats two phone-joined traders on opposite edges, and submits touch actions for the active seat.
+A neutral tabletop keeps public play on the shared screen while each QR-joined phone shows only its trader’s private hand and return selections.
 
 ## Two opposite player edges share one market and one token rail
 
@@ -10,5 +10,6 @@ A neutral tabletop creates a fresh room, seats two phone-joined traders on oppos
 
 - [x] The top player UI and its upper-left log are rotated exactly 180 degrees
 - [x] The lower player UI and lower-right log remain upright
-- [x] A tabletop touch action is accepted for Player 1 and advances play to Player 2
+- [x] Private phone selections load face-down table targets and complete an exchange
+- [x] Public actions use direct card flights instead of a text notification overlay
 - [x] The complete tabletop fits without document scrolling

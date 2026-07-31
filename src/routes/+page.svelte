@@ -750,6 +750,9 @@
       case 'tabletop/created':
         description = 'opened a tabletop';
         break;
+      case 'tabletop/intent':
+        description = 'adjusted a private selection';
+        break;
       case 'player/joined':
         description = 'joined the bazaar';
         break;
