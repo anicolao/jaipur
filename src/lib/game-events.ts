@@ -29,10 +29,28 @@ export interface Player {
   ready: boolean;
 }
 
+export interface GameActivity {
+  id: string;
+  type: GameEventType;
+  actorUid: string;
+  roundNumber?: number;
+  turnNumber?: number;
+  ready?: boolean;
+  starterUid?: string;
+  cardIds?: string[];
+  cardKinds?: string[];
+  returnedCardIds?: string[];
+  returnedCardKinds?: string[];
+  tokenCount?: number;
+  roundWinnerUid?: string;
+  gameWinnerUid?: string;
+}
+
 export interface LobbyState {
   gameId: string | null;
   hostUid: string | null;
   players: Player[];
+  activity: GameActivity[];
   diagnostics: string[];
 }
 
@@ -40,6 +58,7 @@ export const EMPTY_LOBBY: LobbyState = {
   gameId: null,
   hostUid: null,
   players: [],
+  activity: [],
   diagnostics: []
 };
 
@@ -78,6 +97,11 @@ export function reduceLobby(events: GameEvent[]): LobbyState {
       state.gameId = gameId;
       state.hostUid = event.actorUid;
       state.players.push({ uid: event.actorUid, displayName, ready: false });
+      state.activity.push({
+        id: event.id,
+        type: event.type,
+        actorUid: event.actorUid
+      });
       continue;
     }
 
@@ -97,6 +121,11 @@ export function reduceLobby(events: GameEvent[]): LobbyState {
         continue;
       }
       state.players.push({ uid: event.actorUid, displayName, ready: false });
+      state.activity.push({
+        id: event.id,
+        type: event.type,
+        actorUid: event.actorUid
+      });
       continue;
     }
 
@@ -107,6 +136,12 @@ export function reduceLobby(events: GameEvent[]): LobbyState {
         continue;
       }
       player.ready = event.payload.ready;
+      state.activity.push({
+        id: event.id,
+        type: event.type,
+        actorUid: event.actorUid,
+        ready: event.payload.ready
+      });
     }
   }
 

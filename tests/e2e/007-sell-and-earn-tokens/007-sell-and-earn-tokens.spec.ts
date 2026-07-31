@@ -14,6 +14,13 @@ async function finishTokenFlights(page: Page) {
   await expect(page.locator('.token-flight')).toHaveCount(0);
 }
 
+async function finishActionCardFlights(page: Page) {
+  await page.locator('.action-card-flight').evaluateAll((flights) => {
+    for (const flight of flights) flight.getAnimations()[0]?.finish();
+  });
+  await expect(page.locator('.action-card-flight')).toHaveCount(0);
+}
+
 test('both traders sell goods and earn public and private tokens', async ({ browser, page }, testInfo) => {
   const steps = new TestStepHelper(page, testInfo);
   steps.setMetadata(
@@ -71,6 +78,15 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
     name: 'Sell all 3 Spice to the Spice token stack'
   }).click();
 
+  const rivalSaleFlights = rival.locator('.action-card-flight');
+  await expect(rivalSaleFlights).toHaveCount(3);
+  await rivalSaleFlights.evaluateAll((flights) => {
+    for (const flight of flights) flight.getAnimations()[0]?.pause();
+  });
+  await expect(rival.locator('.action-notice')).toContainText(
+    'Asha sold 3 Spice · earned 4 tokens'
+  );
+
   const firstFlight = page.locator(`[data-token-flight-id="${firstSpiceId}"]`);
   await expect(firstFlight).toHaveCount(1);
   await firstFlight.evaluate((element) => {
@@ -84,7 +100,8 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
     .toHaveCount(3);
   const flightStartBox = await firstFlight.boundingBox();
   await firstFlight.evaluate((element) => {
-    element.getAnimations()[0].currentTime = 599;
+    const animation = element.getAnimations()[0];
+    animation.currentTime = Number(animation.effect?.getComputedTiming().endTime ?? 1) - 1;
   });
   const flightEndBox = await firstFlight.boundingBox();
   const ownDestinationBox = await page.locator('.own-token-tray').boundingBox();
@@ -102,6 +119,8 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
   )).toBeLessThanOrEqual(2);
   await finishTokenFlights(page);
   await finishTokenFlights(rival);
+  await finishActionCardFlights(page);
+  await finishActionCardFlights(rival);
 
   await steps.step('large-sale', {
     description: 'A three-card sale awards ordered goods tokens and one hidden bonus',
@@ -146,9 +165,15 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
   }).click();
 
   const observerFlight = page.locator('.token-flight[data-token-kind="spice"]');
+  const observerSaleCard = page.locator('.action-card-flight[data-action-flight-kind="spice"]');
   const opponentDestination = page.locator('.opponent-private');
   const opponentUid = await opponentDestination.getAttribute('data-token-destination');
   await expect(observerFlight).toHaveCount(1);
+  await expect(observerSaleCard).toHaveCount(1);
+  await observerSaleCard.evaluate((element) => element.getAnimations()[0]?.pause());
+  await expect(page.locator('.action-notice')).toContainText(
+    'Belen sold 1 Spice · earned 1 token'
+  );
   await observerFlight.evaluate((element) => {
     const animation = element.getAnimations()[0];
     animation.pause();
@@ -157,7 +182,8 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
   await expect(observerFlight).toHaveAttribute('data-token-recipient', opponentUid ?? '');
   const observerStartBox = await observerFlight.boundingBox();
   await observerFlight.evaluate((element) => {
-    element.getAnimations()[0].currentTime = 599;
+    const animation = element.getAnimations()[0];
+    animation.currentTime = Number(animation.effect?.getComputedTiming().endTime ?? 1) - 1;
   });
   const observerEndBox = await observerFlight.boundingBox();
   const opponentDestinationBox = await opponentDestination.boundingBox();
@@ -175,6 +201,8 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
   )).toBeLessThanOrEqual(2);
   await finishTokenFlights(page);
   await finishTokenFlights(rival);
+  await finishActionCardFlights(page);
+  await finishActionCardFlights(rival);
 
   await steps.step('ordinary-sale', {
     description: 'Belen completes a one-card ordinary-goods sale',
@@ -194,6 +222,17 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
           await page
             .locator('.token-area')
             .evaluate((element) => element.scrollIntoView({ block: 'center' }));
+        }
+      },
+      {
+        spec: 'Each seller’s cards and awarded chips animate for the observer and remain in the log',
+        check: async () => {
+          await page.locator('.game-log summary').click();
+          await expect(page.locator('[data-activity-type="cards/sold"]')).toContainText([
+            /Belen.*sold 1 Spice.*earned 1 token/,
+            /Asha.*sold 3 Spice.*earned 4 tokens/
+          ]);
+          await page.locator('.game-log summary').click();
         }
       }
     ]

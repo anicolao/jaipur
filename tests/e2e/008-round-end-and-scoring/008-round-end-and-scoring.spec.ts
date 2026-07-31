@@ -63,7 +63,7 @@ test('a production-size round scores and resets for its loser', async ({ browser
       {
         spec: 'Round two starts with the loser as active trader on both clients',
         check: async () => {
-          await expect(page.getByText('Round 2')).toBeVisible();
+          await expect(page.getByText('Round 2', { exact: true })).toBeVisible();
           await expect(page.getByText(`${loser}'s turn`)).toBeVisible();
           await expect(rival.getByText(`${loser}'s turn`)).toBeVisible();
         }

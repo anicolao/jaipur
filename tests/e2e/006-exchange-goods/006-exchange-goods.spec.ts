@@ -163,6 +163,22 @@ test('the active trader exchanges market goods for herd camels', async ({ browse
   await expect(camelFlight).toHaveCount(0);
   await page.getByRole('button', { name: 'Trade 2 for 2' }).click();
 
+  const observerFlights = rival.locator('.action-card-flight');
+  await expect(observerFlights).toHaveCount(4);
+  await observerFlights.evaluateAll((flights) => {
+    for (const flight of flights) flight.getAnimations()[0]?.pause();
+  });
+  await expect(rival.locator('.action-notice')).toContainText(/^Asha traded /);
+  await rival.locator('.game-log summary').click();
+  await expect(rival.locator('[data-activity-type="cards/exchanged"]')).toContainText(
+    /^Asha.*traded /
+  );
+  await rival.locator('.game-log summary').click();
+  await observerFlights.evaluateAll((flights) => {
+    for (const flight of flights) flight.getAnimations()[0]?.finish();
+  });
+  await expect(observerFlights).toHaveCount(0);
+
   await steps.step('exchange-complete', {
     description: 'Two goods change zones for one hand card and one camel',
     verifications: [
@@ -188,6 +204,12 @@ test('the active trader exchanges market goods for herd camels', async ({ browse
           await expect(page.getByText('Deck').locator('..')).toContainText(deckBefore ?? '');
           await expect(page.getByText("Belen's turn")).toBeVisible();
           await expect(rival.getByText("Belen's turn")).toBeVisible();
+        }
+      },
+      {
+        spec: 'Belen sees all four committed card movements and the accepted trade in the log',
+        check: async () => {
+          await expect(rival.locator('.game-log summary')).toContainText('Game log 6');
         }
       }
     ]

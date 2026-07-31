@@ -23,6 +23,16 @@
     type Token
   } from '$lib/jaipur-rules';
   import { generateRoomCode, isRoomCode, normalizeRoomCode } from '$lib/room-code';
+  import type { GameActivity } from '$lib/game-events';
+
+  type ActionMovementPlan = {
+    activityId: string;
+    cardId: string;
+    kind: Good | 'camel' | 'card-back';
+    sourceBox: DOMRect;
+    destinationSelector: string;
+    delay: number;
+  };
 
   let status = $state<
     'connecting' | 'syncing' | 'synced' | 'offline' | 'conflict' | 'incompatible' | 'error'
@@ -64,6 +74,26 @@
     delay: number;
   }>>([]);
   let tokenFlightSequence = 0;
+  let actionCardFlights = $state<Array<{
+    key: number;
+    activityId: string;
+    cardId: string;
+    kind: Good | 'camel' | 'card-back';
+    label: string;
+    startLeft: number;
+    startTop: number;
+    startSize: number;
+    endLeft: number;
+    endTop: number;
+    endSize: number;
+    delay: number;
+  }>>([]);
+  let actionFlightSequence = 0;
+  let animatedActivityIds = new Set<string>();
+  let actionNotice = $state<{ key: number; text: string } | null>(null);
+  let actionNoticeSequence = 0;
+  let actionNoticeTimer: ReturnType<typeof setTimeout> | undefined;
+  let logPage = $state(0);
   let repositorySnapshotReady = false;
   let animatedTokenAwardIds = new Set<string>();
   let activeExchangeTarget = $state<string | null>(null);
@@ -128,19 +158,40 @@
   function attachRepository(db: Awaited<ReturnType<typeof initializeFirebase>>['db']) {
     repositorySnapshotReady = false;
     animatedTokenAwardIds = new Set();
+    animatedActivityIds = new Set();
     tokenFlights = [];
+    actionCardFlights = [];
+    actionNotice = null;
     const attached = createGameRepository(db, requestedGameId.trim(), uid);
     repository = attached;
     attached.subscribe(
       (events) => {
         const nextLobby = reduceGame(events);
+        const newActivities = repositorySnapshotReady
+          ? nextLobby.activity.filter(({ id }) => !animatedActivityIds.has(id))
+          : [];
+        const movementPlans = newActivities.flatMap((activity) =>
+          captureActionMovements(lobby, nextLobby, activity)
+        );
         const tokenAwards = repositorySnapshotReady
           ? captureTokenAwards(lobby, nextLobby)
           : [];
         lobby = nextLobby;
-        if (!repositorySnapshotReady) rememberOwnedTokenAwards(nextLobby);
+        if (!repositorySnapshotReady) {
+          rememberOwnedTokenAwards(nextLobby);
+          rememberActivities(nextLobby);
+        } else {
+          for (const activity of newActivities) animatedActivityIds.add(activity.id);
+        }
         repositorySnapshotReady = true;
-        if (tokenAwards.length > 0) void startTokenFlights(tokenAwards);
+        if (movementPlans.length > 0) void startActionCardFlights(movementPlans);
+        if (tokenAwards.length > 0) {
+          void startTokenFlights(tokenAwards, movementPlans.length > 0 ? 320 : 0);
+        }
+        if (newActivities.length > 0) {
+          logPage = 0;
+          showActionNotice(newActivities.at(-1)!);
+        }
         if (lobby.diagnostics.some((diagnostic) => diagnostic.includes('incompatible version'))) {
           status = 'incompatible';
           statusText = 'This game contains an incompatible protocol version';
@@ -677,6 +728,232 @@
     }
   }
 
+  function playerName(playerUid: string): string {
+    return lobby.players.find(({ uid: candidateUid }) => candidateUid === playerUid)?.displayName ?? 'A trader';
+  }
+
+  function activityDescription(activity: GameActivity): string {
+    const count = activity.cardIds?.length ?? 0;
+    const kinds = activity.cardKinds?.map(cardLabel) ?? [];
+    let description: string;
+    switch (activity.type) {
+      case 'game/created':
+        description = 'opened the bazaar';
+        break;
+      case 'player/joined':
+        description = 'joined the bazaar';
+        break;
+      case 'player/ready':
+        description = activity.ready ? 'is ready' : 'is no longer ready';
+        break;
+      case 'round/started':
+        description = `opened round ${activity.roundNumber ?? ''}`;
+        if (activity.starterUid) description += ` · ${playerName(activity.starterUid)} starts`;
+        break;
+      case 'cards/taken-one':
+        description = `took ${kinds[0] ?? 'a good'}`;
+        break;
+      case 'cards/taken-camels':
+        description = `took all ${count} ${count === 1 ? 'camel' : 'camels'}`;
+        break;
+      case 'cards/exchanged':
+        description = `traded ${activity.returnedCardKinds?.map(cardLabel).join(' + ') || `${count} cards`} for ${kinds.join(' + ') || `${count} goods`}`;
+        break;
+      case 'cards/sold':
+        description = `sold ${count} ${kinds[0] ?? 'goods'}${activity.tokenCount ? ` · earned ${activity.tokenCount} ${activity.tokenCount === 1 ? 'token' : 'tokens'}` : ''}`;
+        break;
+      case 'game/rematched':
+        description = 'started a rematch';
+        break;
+    }
+    if (activity.roundWinnerUid) {
+      description += ` · ${playerName(activity.roundWinnerUid)} won round ${activity.roundNumber ?? ''}`;
+    }
+    if (activity.gameWinnerUid) description += ' and the match';
+    return description;
+  }
+
+  function activityText(activity: GameActivity): string {
+    return `${playerName(activity.actorUid)} ${activityDescription(activity)}`;
+  }
+
+  const logPageSize = 5;
+
+  function logPageCount(): number {
+    return Math.max(1, Math.ceil(lobby.activity.length / logPageSize));
+  }
+
+  function visibleLogEntries(): GameActivity[] {
+    const start = Math.min(logPage, logPageCount() - 1) * logPageSize;
+    return [...lobby.activity].reverse().slice(start, start + logPageSize);
+  }
+
+  function showActionNotice(activity: GameActivity) {
+    if (actionNoticeTimer) clearTimeout(actionNoticeTimer);
+    actionNotice = { key: ++actionNoticeSequence, text: activityText(activity) };
+    actionNoticeTimer = setTimeout(() => {
+      actionNotice = null;
+    }, 2600);
+  }
+
+  function rememberActivities(state: GameState) {
+    for (const activity of state.activity) animatedActivityIds.add(activity.id);
+  }
+
+  function elementBox(selector: string): DOMRect | undefined {
+    return document.querySelector<HTMLElement>(selector)?.getBoundingClientRect();
+  }
+
+  function playerHandSelector(playerUid: string): string {
+    return `[data-hand-destination="${CSS.escape(playerUid)}"]`;
+  }
+
+  function playerHerdSelector(playerUid: string): string {
+    return `[data-herd-destination="${CSS.escape(playerUid)}"]`;
+  }
+
+  function playerCardSourceBox(
+    state: GameState,
+    playerUid: string,
+    cardId: string
+  ): DOMRect | undefined {
+    if (playerUid === uid) {
+      const loadedTarget = Object.entries(exchangeLoads).find(([, returnId]) => returnId === cardId)?.[0];
+      if (loadedTarget) {
+        const loadedBox = elementBox(
+          `[data-exchange-target="${CSS.escape(loadedTarget)}"]`
+        );
+        if (loadedBox) return loadedBox;
+      }
+      const exactBox = elementBox(`[data-card-id="${CSS.escape(cardId)}"]`) ??
+        elementBox(`[data-return-source="${CSS.escape(cardId)}"]`);
+      if (exactBox) return exactBox;
+    }
+    const wasCamel = state.round?.herds[playerUid]?.some(({ id }) => id === cardId);
+    return elementBox(
+      wasCamel ? playerHerdSelector(playerUid) : playerHandSelector(playerUid)
+    );
+  }
+
+  function captureActionMovements(
+    previous: GameState,
+    next: GameState,
+    activity: GameActivity
+  ): ActionMovementPlan[] {
+    if (!previous.round || !next.round || previous.round.number !== next.round.number) return [];
+    const plans: ActionMovementPlan[] = [];
+    const pushPlan = (
+      cardId: string,
+      kind: Good | 'camel' | 'card-back',
+      sourceBox: DOMRect | undefined,
+      destinationSelector: string,
+      delay: number
+    ) => {
+      if (sourceBox) {
+        plans.push({ activityId: activity.id, cardId, kind, sourceBox, destinationSelector, delay });
+      }
+    };
+    const cardKinds = activity.cardKinds ?? [];
+    const cardIds = activity.cardIds ?? [];
+
+    if (activity.type === 'cards/taken-one' || activity.type === 'cards/taken-camels') {
+      cardIds.forEach((cardId, index) => {
+        pushPlan(
+          cardId,
+          (cardKinds[index] ?? 'card-back') as Good | 'camel' | 'card-back',
+          elementBox(`[data-card-id="${CSS.escape(cardId)}"]`),
+          activity.type === 'cards/taken-camels'
+            ? playerHerdSelector(activity.actorUid)
+            : playerHandSelector(activity.actorUid),
+          index * 90
+        );
+      });
+      const previousMarketIds = new Set(previous.round.market.map(({ id }) => id));
+      const refillCards = next.round.market.filter(({ id }) => !previousMarketIds.has(id));
+      const deckBox = elementBox('.deck-count img');
+      refillCards.forEach((card, index) => {
+        pushPlan(
+          card.id,
+          'card-back',
+          deckBox,
+          `[data-card-id="${CSS.escape(card.id)}"]`,
+          cardIds.length * 90 + 160 + index * 90
+        );
+      });
+    }
+
+    if (activity.type === 'cards/exchanged') {
+      cardIds.forEach((cardId, index) => {
+        pushPlan(
+          cardId,
+          (cardKinds[index] ?? 'card-back') as Good | 'camel' | 'card-back',
+          elementBox(`[data-card-id="${CSS.escape(cardId)}"]`),
+          playerHandSelector(activity.actorUid),
+          index * 80
+        );
+      });
+      (activity.returnedCardIds ?? []).forEach((cardId, index) => {
+        pushPlan(
+          cardId,
+          (activity.returnedCardKinds?.[index] ?? 'card-back') as Good | 'camel' | 'card-back',
+          playerCardSourceBox(previous, activity.actorUid, cardId),
+          `[data-card-id="${CSS.escape(cardId)}"]`,
+          cardIds.length * 80 + index * 80
+        );
+      });
+    }
+
+    if (activity.type === 'cards/sold') {
+      cardIds.forEach((cardId, index) => {
+        pushPlan(
+          cardId,
+          (cardKinds[index] ?? 'card-back') as Good | 'camel' | 'card-back',
+          playerCardSourceBox(previous, activity.actorUid, cardId),
+          `[data-token-kind="${CSS.escape(cardKinds[index] ?? '')}"]`,
+          index * 80
+        );
+      });
+    }
+    return plans;
+  }
+
+  async function startActionCardFlights(plans: ActionMovementPlan[]) {
+    await tick();
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const flights = plans.flatMap((plan) => {
+      const destination = document.querySelector<HTMLElement>(plan.destinationSelector);
+      if (!destination) return [];
+      const destinationBox = destination.getBoundingClientRect();
+      const startSize = Math.min(plan.sourceBox.width, plan.sourceBox.height);
+      const destinationSize = Math.min(destinationBox.width, destinationBox.height);
+      const endSize = destination.matches('[data-card-id]')
+        ? destinationSize
+        : Math.min(48, Math.max(34, destinationSize));
+      return [{
+        key: ++actionFlightSequence,
+        activityId: plan.activityId,
+        cardId: plan.cardId,
+        kind: plan.kind,
+        label: plan.kind === 'card-back' ? '' : cardLabel(plan.kind),
+        startLeft: plan.sourceBox.left + (plan.sourceBox.width - startSize) / 2,
+        startTop: plan.sourceBox.top + (plan.sourceBox.height - startSize) / 2,
+        startSize,
+        endLeft: destinationBox.left + (destinationBox.width - endSize) / 2,
+        endTop: destinationBox.top + (destinationBox.height - endSize) / 2,
+        endSize,
+        delay: plan.delay
+      }];
+    });
+    actionCardFlights = [...actionCardFlights, ...flights];
+    for (const flight of flights) {
+      setTimeout(() => finishActionCardFlight(flight.key), 820 + flight.delay);
+    }
+  }
+
+  function finishActionCardFlight(key: number) {
+    actionCardFlights = actionCardFlights.filter((flight) => flight.key !== key);
+  }
+
   function ownedTokenValue() {
     if (!lobby.round) return 0;
     return [
@@ -741,7 +1018,7 @@
     token: Token;
     recipientUid: string;
     sourceBox: DOMRect;
-  }>) {
+  }>, baseDelay = 0) {
     await tick();
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const flights = awards.flatMap(({ token, recipientUid, sourceBox }, index) => {
@@ -767,7 +1044,7 @@
         endLeft,
         endTop,
         endSize,
-        delay: index * 90
+        delay: baseDelay + index * 90
       }];
     });
     tokenFlights = [...tokenFlights, ...flights];
@@ -1145,6 +1422,7 @@
           </div>
           <div
             class="opponent-hand"
+            data-hand-destination={opponentUid()}
             role="img"
             aria-label={`${opponentPlayer()?.displayName ?? 'Opponent'} has ${opponentHandCount()} of 7 cards`}
           >
@@ -1163,6 +1441,7 @@
           </div>
           <div
             class="camel-herd opponent-herd"
+            data-herd-destination={opponentUid()}
             role="img"
             aria-label={`${opponentPlayer()?.displayName ?? 'Opponent'} has ${camelCountLabel(lobby.round.herds[opponentUid()]?.length ?? 0)} in their herd`}
           >
@@ -1207,6 +1486,7 @@
           <h2 id="hand-heading">Your hand</h2>
           <div
             class="cards hand"
+            data-hand-destination={uid}
             style={`grid-template-columns: repeat(${Math.max((lobby.round.hands[uid] ?? []).filter(({ id }) => !exchangeReturnIds().includes(id)).length, 1)}, minmax(0, var(--card-size)));`}
           >
           {#each (lobby.round.hands[uid] ?? []).filter(({ id }) => !exchangeReturnIds().includes(id)) as card}
@@ -1245,6 +1525,7 @@
             {#if lobby.round.activeUid === uid}
               <button
                 class="own-camel-stack"
+                data-herd-destination={uid}
                 class:selected={Boolean(selectedCamelId)}
                 class:dragging={draggedReturnSource === 'camel'}
                 type="button"
@@ -1279,6 +1560,7 @@
             {:else}
               <span
                 class="own-camel-stack"
+                data-herd-destination={uid}
                 role="img"
                 aria-label={`You have ${camelCountLabel(lobby.round.herds[uid]?.length ?? 0)} in your herd`}
                 style={`--herd-span: ${ownCamelStackSpan()}`}
@@ -1402,6 +1684,43 @@
       </section>
     {/if}
 
+    {#if actionNotice}
+      <p class="action-notice" data-action-notice={actionNotice.key} aria-live="polite">
+        {actionNotice.text}
+      </p>
+    {/if}
+    {#if !shellOnly && lobby.activity.length > 0}
+      <details class="game-log">
+        <summary>Game log <span>{lobby.activity.length}</span></summary>
+        <section class="game-log-panel" aria-labelledby="game-log-heading">
+          <h2 id="game-log-heading">Game log</h2>
+          <ol start={Math.max(1, lobby.activity.length - logPage * logPageSize)} reversed>
+            {#each visibleLogEntries() as activity}
+              <li data-activity-id={activity.id} data-activity-type={activity.type}>
+                <strong>{playerName(activity.actorUid)}</strong>
+                <span>{activityDescription(activity)}</span>
+              </li>
+            {/each}
+          </ol>
+          <nav aria-label="Game log pages">
+            <button
+              type="button"
+              class="secondary"
+              disabled={logPage === 0}
+              onclick={() => logPage = Math.max(0, logPage - 1)}
+            >Newer</button>
+            <span>Page {Math.min(logPage + 1, logPageCount())} / {logPageCount()}</span>
+            <button
+              type="button"
+              class="secondary"
+              disabled={logPage >= logPageCount() - 1}
+              onclick={() => logPage = Math.min(logPageCount() - 1, logPage + 1)}
+            >Older</button>
+          </nav>
+        </section>
+      </details>
+    {/if}
+
     <p role={status === 'incompatible' ? 'alert' : 'status'} data-status={status}>{statusText}</p>
     {#if lobby.diagnostics.length > 0}
       <details class="diagnostics">
@@ -1438,6 +1757,20 @@
     >
       <img src={componentImage(flight.kind)} alt="" draggable="false" />
       <span>{flight.label}</span>
+    </span>
+  {/each}
+  {#each actionCardFlights as flight (flight.key)}
+    <span
+      class="action-card-flight"
+      data-action-flight-id={flight.activityId}
+      data-action-flight-card-id={flight.cardId}
+      data-action-flight-kind={flight.kind}
+      aria-hidden="true"
+      style={`--action-flight-start-left: ${flight.startLeft}px; --action-flight-start-top: ${flight.startTop}px; --action-flight-start-size: ${flight.startSize}px; --action-flight-end-left: ${flight.endLeft}px; --action-flight-end-top: ${flight.endTop}px; --action-flight-end-size: ${flight.endSize}px; --action-flight-delay: ${flight.delay}ms`}
+      onanimationend={() => finishActionCardFlight(flight.key)}
+    >
+      <img src={componentImage(flight.kind)} alt="" draggable="false" />
+      {#if flight.label}<span>{flight.label}</span>{/if}
     </span>
   {/each}
   {#each tokenFlights as flight (flight.key)}
@@ -1625,6 +1958,118 @@
     border: 0;
     list-style: disc;
   }
+  .action-notice {
+    position: absolute;
+    z-index: 170;
+    top: 0.65rem;
+    left: 50%;
+    width: max-content;
+    max-width: min(34rem, calc(100% - 1.4rem));
+    margin: 0;
+    padding: 0.48rem 0.75rem;
+    border: 1px solid #8e826b;
+    border-radius: 99rem;
+    background: rgb(255 250 238 / 96%);
+    box-shadow: 0 0.35rem 0.8rem rgb(24 58 55 / 24%);
+    color: #183a37;
+    font-size: 0.82rem;
+    font-weight: 700;
+    line-height: 1.1;
+    pointer-events: none;
+    animation: action-notice-arrival 2600ms ease both;
+  }
+  @keyframes action-notice-arrival {
+    0% { opacity: 0; transform: translate(-50%, -0.75rem); }
+    12%, 82% { opacity: 1; transform: translate(-50%, 0); }
+    100% { opacity: 0; transform: translate(-50%, -0.25rem); }
+  }
+  .game-log {
+    position: absolute;
+    z-index: 160;
+    bottom: 0.3rem;
+    left: 0.7rem;
+    color: #183a37;
+    text-align: left;
+  }
+  .game-log > summary {
+    display: flex;
+    min-width: 7.2rem;
+    min-height: 44px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.35rem 0.55rem;
+    border: 1px solid #8e826b;
+    border-radius: 99rem;
+    background: #fffaf0;
+    box-shadow: 0 0.18rem 0.45rem rgb(24 58 55 / 18%);
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 700;
+    list-style: none;
+  }
+  .game-log > summary::-webkit-details-marker { display: none; }
+  .game-log > summary span {
+    display: grid;
+    min-width: 1.35rem;
+    min-height: 1.35rem;
+    padding: 0 0.25rem;
+    place-items: center;
+    border-radius: 99rem;
+    background: #315f58;
+    color: white;
+  }
+  .game-log-panel {
+    position: absolute;
+    bottom: calc(100% + 0.35rem);
+    left: 0;
+    display: grid;
+    width: min(27rem, calc(100vw - 1.4rem));
+    gap: 0.35rem;
+    padding: 0.6rem;
+    border: 1px solid #8e826b;
+    border-radius: 0.75rem;
+    background: rgb(255 250 238 / 98%);
+    box-shadow: 0 0.7rem 1.4rem rgb(24 58 55 / 26%);
+  }
+  .game-log-panel h2 {
+    margin: 0;
+    font: 700 1.05rem 'Cormorant Garamond', serif;
+  }
+  .game-log-panel ol {
+    display: grid;
+    gap: 0.2rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .game-log-panel li {
+    display: grid;
+    min-height: 0;
+    grid-template-columns: minmax(4.5rem, auto) 1fr;
+    align-items: baseline;
+    gap: 0.4rem;
+    padding: 0.28rem 0.35rem;
+    border: 0;
+    border-radius: 0.35rem;
+    background: #f2e8d3;
+    font-size: 0.72rem;
+    line-height: 1.15;
+  }
+  .game-log-panel li:first-child { background: #f6e5c7; }
+  .game-log-panel nav {
+    display: grid;
+    grid-template-columns: 4.4rem 1fr 4.4rem;
+    align-items: center;
+    gap: 0.35rem;
+    text-align: center;
+  }
+  .game-log-panel nav button {
+    min-height: 36px;
+    padding: 0.25rem 0.45rem;
+    font-size: 0.7rem;
+  }
+  .game-log-panel nav span { font-size: 0.68rem; }
   .build { margin: 0.55rem 0 0; color: #5f6f69; font-size: 0.875rem; }
   .table { text-align: left; }
   .table header {
@@ -1841,6 +2286,9 @@
       animation-iteration-count: 1 !important;
     }
     .token-flight {
+      animation-delay: 0ms !important;
+    }
+    .action-card-flight {
       animation-delay: 0ms !important;
     }
   }
@@ -2444,6 +2892,63 @@
     text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .action-card-flight {
+    position: fixed;
+    z-index: 135;
+    top: var(--action-flight-start-top);
+    left: var(--action-flight-start-left);
+    display: grid;
+    width: var(--action-flight-start-size);
+    height: var(--action-flight-start-size);
+    padding: 0.18rem;
+    overflow: hidden;
+    border: 2px solid #315f58;
+    border-radius: 0.55rem;
+    background: #183a37;
+    box-shadow: 0 0.7rem 1.2rem rgb(24 58 55 / 36%);
+    color: white;
+    pointer-events: none;
+    animation: committed-card-flight 700ms ease-in-out var(--action-flight-delay) both;
+  }
+  .action-card-flight img {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    border-radius: 0.35rem;
+    object-fit: cover;
+  }
+  .action-card-flight > span {
+    position: absolute;
+    right: 0.18rem;
+    bottom: 0.18rem;
+    left: 0.18rem;
+    padding: 0.15rem 0.2rem;
+    overflow: hidden;
+    background: rgb(10 32 30 / 82%);
+    font-size: clamp(0.5rem, 1.2vmin, 0.72rem);
+    line-height: 1;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  @keyframes committed-card-flight {
+    0% {
+      top: var(--action-flight-start-top);
+      left: var(--action-flight-start-left);
+      width: var(--action-flight-start-size);
+      height: var(--action-flight-start-size);
+      opacity: 1;
+      transform: rotate(0deg) scale(1);
+    }
+    100% {
+      top: var(--action-flight-end-top);
+      left: var(--action-flight-end-left);
+      width: var(--action-flight-end-size);
+      height: var(--action-flight-end-size);
+      opacity: 0.96;
+      transform: rotate(5deg) scale(1);
+    }
   }
   @keyframes return-card-flight {
     0% {

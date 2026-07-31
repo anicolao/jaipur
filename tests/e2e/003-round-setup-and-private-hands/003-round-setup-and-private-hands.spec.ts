@@ -20,7 +20,7 @@ test('ready traders receive a deterministic private deal', async ({ browser, pag
   await rival.goto(url);
   await rival.getByLabel('Your trader name').fill('Belen');
   await rival.getByRole('button', { name: 'Join game' }).click();
-  await expect(page.getByText('Belen')).toBeVisible();
+  await expect(page.getByLabel('Game lobby').getByText('Belen', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Ready to trade' }).click();
   await rival.getByRole('button', { name: 'Ready to trade' }).click();

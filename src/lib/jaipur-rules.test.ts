@@ -67,6 +67,15 @@ describe('taking one good', () => {
     expect(after.round?.market).toHaveLength(5);
     expect(after.round?.activeUid).toBe('b');
     expect(cardCount(after.round!)).toBe(55);
+    expect(after.activity.at(-1)).toEqual({
+      id: 'a-4',
+      type: 'cards/taken-one',
+      actorUid: 'a',
+      roundNumber: 1,
+      turnNumber: 1,
+      cardIds: [card.id],
+      cardKinds: [card.kind]
+    });
   });
 });
 
@@ -276,6 +285,7 @@ describe('replay conflicts and versions', () => {
     const replayed = reduceGame([...setup, action, action]);
     expect(replayed.round?.turnNumber).toBe(2);
     expect(replayed.diagnostics).toContain('a-4: duplicate event ID');
+    expect(replayed.activity.filter(({ id }) => id === 'a-4')).toHaveLength(1);
   });
 
   it('ignores stale concurrent actions and incompatible versions without partial mutation', () => {
@@ -304,5 +314,7 @@ describe('replay conflicts and versions', () => {
     expect(replayed.round?.hands.b).not.toContainEqual(goods[1]);
     expect(replayed.diagnostics).toContain('a-5: stale round or turn');
     expect(replayed.diagnostics).toContain('b-6: incompatible version');
+    expect(replayed.activity.map(({ id }) => id)).not.toContain('a-5');
+    expect(replayed.activity.map(({ id }) => id)).not.toContain('b-6');
   });
 });

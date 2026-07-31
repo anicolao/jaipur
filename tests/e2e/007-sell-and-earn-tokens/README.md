@@ -20,3 +20,4 @@ Physical chips leave their ordered supplies and fly to each seller before Belen 
 
 - [x] The next ordered spice token belongs to Belen
 - [x] Asha sees only Belen’s public token count
+- [x] Each seller’s cards and awarded chips animate for the observer and remain in the log

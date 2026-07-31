@@ -3,6 +3,7 @@ import {
   SCHEMA_VERSION,
   reduceLobby,
   type GameEvent,
+  type GameActivity,
   type LobbyState
 } from './game-events';
 
@@ -273,12 +274,12 @@ export function reduceGame(events: GameEvent[]): GameState {
   let winnerUid: string | null = null;
   let epoch = 1;
 
-  const finishAction = (actorUid: string) => {
-    if (!round) return;
+  const finishAction = (actorUid: string): Pick<GameActivity, 'roundWinnerUid' | 'gameWinnerUid'> => {
+    if (!round) return {};
     round.activeUid = playerUids.find((uid) => uid !== actorUid) ?? round.activeUid;
     round.turnNumber += 1;
     const endReason = roundEndReason(round);
-    if (!endReason) return;
+    if (!endReason) return {};
     const resolution = resolveRound(round, playerUids);
     round.status = 'complete';
     round.endReason = endReason;
@@ -288,6 +289,10 @@ export function reduceGame(events: GameEvent[]): GameState {
     round.loserUid = resolution.loserUid;
     seals[resolution.winnerUid] += 1;
     if (seals[resolution.winnerUid] >= 2) winnerUid = resolution.winnerUid;
+    return {
+      roundWinnerUid: resolution.winnerUid,
+      gameWinnerUid: winnerUid ?? undefined
+    };
   };
 
   const seenIds = new Set<string>();
@@ -310,6 +315,11 @@ export function reduceGame(events: GameEvent[]): GameState {
       for (const uid of playerUids) seals[uid] = 0;
       winnerUid = null;
       epoch += 1;
+      lobby.activity.push({
+        id: event.id,
+        type: event.type,
+        actorUid: event.actorUid
+      });
       continue;
     }
 
@@ -337,6 +347,13 @@ export function reduceGame(events: GameEvent[]): GameState {
       );
       round.number = rounds.length + 1;
       rounds.push(round);
+      lobby.activity.push({
+        id: event.id,
+        type: event.type,
+        actorUid: event.actorUid,
+        roundNumber: round.number,
+        starterUid
+      });
       continue;
     }
 
@@ -376,7 +393,17 @@ export function reduceGame(events: GameEvent[]): GameState {
       hand.push(card);
       const replacement = round.deck.shift();
       if (replacement) round.market.splice(marketIndex, 0, replacement);
-      finishAction(event.actorUid);
+      const result = finishAction(event.actorUid);
+      lobby.activity.push({
+        id: event.id,
+        type: event.type,
+        actorUid: event.actorUid,
+        roundNumber: round.number,
+        turnNumber: round.turnNumber - 1,
+        cardIds: [card.id],
+        cardKinds: [card.kind],
+        ...result
+      });
       continue;
     }
 
@@ -391,7 +418,17 @@ export function reduceGame(events: GameEvent[]): GameState {
       while (round.market.length < 5 && round.deck.length > 0) {
         round.market.push(round.deck.shift()!);
       }
-      finishAction(event.actorUid);
+      const result = finishAction(event.actorUid);
+      lobby.activity.push({
+        id: event.id,
+        type: event.type,
+        actorUid: event.actorUid,
+        roundNumber: round.number,
+        turnNumber: round.turnNumber - 1,
+        cardIds: camels.map(({ id }) => id),
+        cardKinds: camels.map(({ kind }) => kind),
+        ...result
+      });
       continue;
     }
 
@@ -422,13 +459,29 @@ export function reduceGame(events: GameEvent[]): GameState {
         ...taken
       ];
       round.herds[event.actorUid] = herd.filter(({ id }) => !returnedIds.includes(id));
-      finishAction(event.actorUid);
+      const result = finishAction(event.actorUid);
+      lobby.activity.push({
+        id: event.id,
+        type: event.type,
+        actorUid: event.actorUid,
+        roundNumber: round.number,
+        turnNumber: round.turnNumber - 1,
+        cardIds: taken.map(({ id }) => id),
+        cardKinds: taken.map(({ kind }) => kind),
+        returnedCardIds: returned.map(({ id }) => id),
+        returnedCardKinds: returned.map(({ kind }) => kind),
+        ...result
+      });
       continue;
     }
 
     if (event.type === 'cards/sold') {
       const kind = event.payload.kind;
       const cardIds = event.payload.cardIds;
+      const previousTokenCount = event.actorUid in round.ownedGoodsTokens
+        ? (round.ownedGoodsTokens[event.actorUid]?.length ?? 0) +
+          (round.ownedBonusTokens[event.actorUid]?.length ?? 0)
+        : 0;
       if (
         typeof kind !== 'string' ||
         !Array.isArray(cardIds) ||
@@ -438,9 +491,29 @@ export function reduceGame(events: GameEvent[]): GameState {
         lobby.diagnostics.push(`${event.id}: invalid sale`);
         continue;
       }
-      finishAction(event.actorUid);
+      const result = finishAction(event.actorUid);
+      const nextTokenCount = (round.ownedGoodsTokens[event.actorUid]?.length ?? 0) +
+        (round.ownedBonusTokens[event.actorUid]?.length ?? 0);
+      lobby.activity.push({
+        id: event.id,
+        type: event.type,
+        actorUid: event.actorUid,
+        roundNumber: round.number,
+        turnNumber: round.turnNumber - 1,
+        cardIds: [...cardIds] as string[],
+        cardKinds: Array.from({ length: cardIds.length }, () => kind),
+        tokenCount: nextTokenCount - previousTokenCount,
+        ...result
+      });
     }
   }
+  const eventOrder = new Map<string, number>();
+  events.forEach((event, index) => {
+    if (!eventOrder.has(event.id)) eventOrder.set(event.id, index);
+  });
+  lobby.activity.sort(
+    (left, right) => (eventOrder.get(left.id) ?? 0) - (eventOrder.get(right.id) ?? 0)
+  );
   return { ...lobby, round, rounds, seals, winnerUid, epoch };
 }
 
