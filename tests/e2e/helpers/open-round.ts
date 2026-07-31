@@ -24,7 +24,7 @@ export async function openRound(
   await rival.goto(url);
   await rival.getByLabel('Your trader name').fill('Belen');
   await rival.getByRole('button', { name: 'Join game' }).click();
-  await expect(host.getByText('Belen')).toBeVisible();
+  await expect(host.getByLabel('Game lobby').getByText('Belen', { exact: true })).toBeVisible();
   await host.getByRole('button', { name: 'Ready to trade' }).click();
   await rival.getByRole('button', { name: 'Ready to trade' }).click();
   await host.getByRole('button', { name: 'Open the market' }).click();

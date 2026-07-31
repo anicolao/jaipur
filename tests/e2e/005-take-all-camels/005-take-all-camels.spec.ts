@@ -23,6 +23,22 @@ test('the active trader takes every camel as one action', async ({ browser, page
     .first()
     .click();
 
+  const observerFlights = rival.locator('.action-card-flight');
+  await expect(observerFlights).toHaveCount(camelCount * 2);
+  await observerFlights.evaluateAll((flights) => {
+    for (const flight of flights) flight.getAnimations()[0]?.pause();
+  });
+  await expect(
+    observerFlights.filter({ has: rival.locator('[src*="camel"]') })
+  ).toHaveCount(camelCount);
+  await expect(rival.locator('.action-notice')).toContainText(
+    `Asha took all ${camelCount} camels`
+  );
+  await observerFlights.evaluateAll((flights) => {
+    for (const flight of flights) flight.getAnimations()[0]?.finish();
+  });
+  await expect(observerFlights).toHaveCount(0);
+
   await steps.step('camels-taken', {
     description: 'Every camel joins Asha’s herd',
     verifications: [
@@ -54,6 +70,17 @@ test('the active trader takes every camel as one action', async ({ browser, page
         check: async () => {
           await expect(page.getByText("Belen's turn")).toBeVisible();
           await expect(rival.getByText("Belen's turn")).toBeVisible();
+        }
+      },
+      {
+        spec: 'Belen sees every camel and refill card move as one shared action',
+        check: async () => {
+          await expect(rival.locator('.game-log [data-activity-type="cards/taken-camels"]'))
+            .not.toBeVisible();
+          await rival.locator('.game-log summary').click();
+          await expect(rival.locator('[data-activity-type="cards/taken-camels"]'))
+            .toContainText(`took all ${camelCount} camels`);
+          await rival.locator('.game-log summary').click();
         }
       }
     ]

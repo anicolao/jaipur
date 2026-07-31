@@ -37,6 +37,11 @@ describe('lobby reducer', () => {
       { uid: 'a', displayName: 'Asha', ready: true },
       { uid: 'b', displayName: 'Belen', ready: false }
     ]);
+    expect(state.activity).toEqual([
+      { id: 'a-1', type: 'game/created', actorUid: 'a' },
+      { id: 'b-1', type: 'player/joined', actorUid: 'b' },
+      { id: 'a-2', type: 'player/ready', actorUid: 'a', ready: true }
+    ]);
   });
 
   it('deterministically ignores a third seat and duplicate creation', () => {
@@ -48,6 +53,7 @@ describe('lobby reducer', () => {
     ]);
 
     expect(state.players).toHaveLength(2);
+    expect(state.activity.map(({ id }) => id)).toEqual(['a-1', 'b-1']);
     expect(state.diagnostics).toHaveLength(2);
   });
 });

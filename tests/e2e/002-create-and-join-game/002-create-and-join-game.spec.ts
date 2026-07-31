@@ -38,15 +38,15 @@ test('two anonymous traders share an append-only lobby', async ({ browser, page 
       {
         spec: 'The host sees both named traders',
         check: async () => {
-          await expect(page.getByText('Asha')).toBeVisible();
-          await expect(page.getByText('Belen')).toBeVisible();
+          await expect(page.getByLabel('Game lobby').getByText('Asha', { exact: true })).toBeVisible();
+          await expect(page.getByLabel('Game lobby').getByText('Belen', { exact: true })).toBeVisible();
         }
       },
       {
         spec: 'The rival observes the same membership',
         check: async () => {
-          await expect(rival.getByText('Asha')).toBeVisible();
-          await expect(rival.getByText('Belen')).toBeVisible();
+          await expect(rival.getByLabel('Game lobby').getByText('Asha', { exact: true })).toBeVisible();
+          await expect(rival.getByLabel('Game lobby').getByText('Belen', { exact: true })).toBeVisible();
         }
       }
     ]
@@ -59,8 +59,8 @@ test('two anonymous traders share an append-only lobby', async ({ browser, page 
       {
         spec: 'Both memberships survive a host reload',
         check: async () => {
-          await expect(page.getByText('Asha')).toBeVisible();
-          await expect(page.getByText('Belen')).toBeVisible();
+          await expect(page.getByLabel('Game lobby').getByText('Asha', { exact: true })).toBeVisible();
+          await expect(page.getByLabel('Game lobby').getByText('Belen', { exact: true })).toBeVisible();
         }
       }
     ]
