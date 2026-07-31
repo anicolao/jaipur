@@ -1,6 +1,6 @@
 # Sell goods and earn tokens
 
-Asha earns ordered goods tokens and a private size bonus before Belen completes an ordinary sale.
+Physical chips leave their ordered supplies and fly to each seller before Belen completes an ordinary sale.
 
 ## A three-card sale awards ordered goods tokens and one hidden bonus
 

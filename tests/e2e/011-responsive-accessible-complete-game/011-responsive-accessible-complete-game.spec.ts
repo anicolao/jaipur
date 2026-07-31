@@ -164,7 +164,7 @@ test('the complete table is responsive and accessible by keyboard and touch', as
               confirmExchange.evaluate((element) => getComputedStyle(element).outlineStyle)
             )
             .not.toBe('none');
-          await expect(page.locator('.table header')).toHaveAttribute('aria-live', 'polite');
+          await expect(page.locator('.table > header')).toHaveAttribute('aria-live', 'polite');
         }
       },
       {
@@ -197,6 +197,8 @@ test('the complete table is responsive and accessible by keyboard and touch', as
   await confirmSale.focus();
   await rival.keyboard.press('Enter');
   await expect(page.getByText("Asha's turn")).toBeVisible();
+  await expect(page.locator('.token-flight')).toHaveCount(0);
+  await expect(rival.locator('.token-flight')).toHaveCount(0);
 
   await steps.step('touch-ready-table', {
     description: 'The synchronized table exposes every state without relying on colour',
@@ -222,7 +224,8 @@ test('the complete table is responsive and accessible by keyboard and touch', as
           await expect(page.locator('.token.leather')).toContainText('Leather');
           await expect(page.locator('.token.leather')).toContainText('left');
           await expect(page.locator('.market .piece-image')).toHaveCount(5);
-          await expect(page.locator('.token-area img')).toHaveCount(6);
+          await expect(page.locator('.token-area .supply-token')).toHaveCount(36);
+          await expect(page.locator('.token-area .bonus-supply-token')).toHaveCount(18);
         }
       },
       {

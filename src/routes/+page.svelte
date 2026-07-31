@@ -4,7 +4,7 @@
   import '@fontsource/cormorant-garamond/700.css';
   import { replaceState } from '$app/navigation';
   import { assets as assetBase } from '$app/paths';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { initializeFirebase } from '$lib/firebase';
   import {
     createGameRepository,
@@ -12,13 +12,15 @@
     type GameRepository
   } from '$lib/game-repository';
   import PieceArt from '$lib/PieceArt.svelte';
+  import TokenChip from '$lib/TokenChip.svelte';
   import {
     isLegalExchange,
     isLegalSale,
     reduceGame,
     type Card,
     type GameState,
-    type Good
+    type Good,
+    type Token
   } from '$lib/jaipur-rules';
   import { generateRoomCode, isRoomCode, normalizeRoomCode } from '$lib/room-code';
 
@@ -48,6 +50,22 @@
     endSize: number;
   }>>([]);
   let returnFlightSequence = 0;
+  let tokenFlights = $state<Array<{
+    key: number;
+    token: Token;
+    recipientUid: string;
+    hidden: boolean;
+    startLeft: number;
+    startTop: number;
+    startSize: number;
+    endLeft: number;
+    endTop: number;
+    endSize: number;
+    delay: number;
+  }>>([]);
+  let tokenFlightSequence = 0;
+  let repositorySnapshotReady = false;
+  let animatedTokenAwardIds = new Set<string>();
   let activeExchangeTarget = $state<string | null>(null);
   let selectedHand = $state<string[]>([]);
   let selectedCamelId = $state<string | null>(null);
@@ -65,6 +83,7 @@
   } | null>(null);
   let suppressReturnClickId = $state<string | null>(null);
   const goods: Good[] = ['diamond', 'gold', 'silver', 'cloth', 'spice', 'leather'];
+  const bonusSizes = ['3', '4', '5'] as const;
   const componentImage = (kind: Good | 'camel' | 'seal' | 'card-back') =>
     `${assetBase}/components/${kind}.webp`;
   const opponentPlayer = () => lobby.players.find((player) => player.uid !== uid);
@@ -107,11 +126,21 @@
   }
 
   function attachRepository(db: Awaited<ReturnType<typeof initializeFirebase>>['db']) {
+    repositorySnapshotReady = false;
+    animatedTokenAwardIds = new Set();
+    tokenFlights = [];
     const attached = createGameRepository(db, requestedGameId.trim(), uid);
     repository = attached;
     attached.subscribe(
       (events) => {
-        lobby = reduceGame(events);
+        const nextLobby = reduceGame(events);
+        const tokenAwards = repositorySnapshotReady
+          ? captureTokenAwards(lobby, nextLobby)
+          : [];
+        lobby = nextLobby;
+        if (!repositorySnapshotReady) rememberOwnedTokenAwards(nextLobby);
+        repositorySnapshotReady = true;
+        if (tokenAwards.length > 0) void startTokenFlights(tokenAwards);
         if (lobby.diagnostics.some((diagnostic) => diagnostic.includes('incompatible version'))) {
           status = 'incompatible';
           statusText = 'This game contains an incompatible protocol version';
@@ -496,9 +525,16 @@
     if (!pointerReturnDrag || event.pointerId !== pointerReturnDrag.pointerId) return;
     const { cardId, moved } = pointerReturnDrag;
     if (moved) {
-      const dropTarget = document
+      const directTarget = document
         .elementFromPoint(event.clientX, event.clientY)
         ?.closest<HTMLElement>('[data-exchange-target]');
+      const dropTarget = directTarget ?? Array.from(
+        document.querySelectorAll<HTMLElement>('[data-exchange-target]')
+      ).find((candidate) => {
+        const box = candidate.getBoundingClientRect();
+        return event.clientX >= box.left && event.clientX <= box.right &&
+          event.clientY >= box.top && event.clientY <= box.bottom;
+      });
       const marketCardId = dropTarget?.dataset.exchangeTarget;
       if (marketCardId && !dropTarget.matches(':disabled')) {
         assignExchangeReturn(marketCardId, cardId, 'drag');
@@ -647,6 +683,128 @@
       ...(lobby.round.ownedGoodsTokens[uid] ?? []),
       ...(lobby.round.ownedBonusTokens[uid] ?? [])
     ].reduce((total, token) => total + token.value, 0);
+  }
+
+  function ownedTokens(state: GameState, playerUid: string): Token[] {
+    if (!state.round) return [];
+    return [
+      ...(state.round.ownedGoodsTokens[playerUid] ?? []),
+      ...(state.round.ownedBonusTokens[playerUid] ?? [])
+    ];
+  }
+
+  function captureTokenAwards(previous: GameState, next: GameState): Array<{
+    token: Token;
+    recipientUid: string;
+    sourceBox: DOMRect;
+  }> {
+    if (
+      !previous.round ||
+      !next.round ||
+      previous.round.number !== next.round.number
+    ) {
+      return [];
+    }
+    return next.players.flatMap((player) => {
+      const previousIds = new Set(
+        ownedTokens(previous, player.uid).map(({ id }) => id)
+      );
+      return ownedTokens(next, player.uid)
+        .filter(({ id }) => !previousIds.has(id))
+        .flatMap((token) => {
+          const awardId = tokenAwardId(next, player.uid, token.id);
+          if (animatedTokenAwardIds.has(awardId)) return [];
+          animatedTokenAwardIds.add(awardId);
+          const source = document.querySelector<HTMLElement>(
+            `[data-supply-token-id="${CSS.escape(token.id)}"]`
+          );
+          const fallback = document.querySelector<HTMLElement>('.token-area');
+          const sourceBox = (source ?? fallback)?.getBoundingClientRect();
+          return sourceBox ? [{ token, recipientUid: player.uid, sourceBox }] : [];
+        });
+    });
+  }
+
+  function tokenAwardId(state: GameState, recipientUid: string, tokenId: string): string {
+    return `${state.epoch}:${state.round?.number ?? 0}:${recipientUid}:${tokenId}`;
+  }
+
+  function rememberOwnedTokenAwards(state: GameState) {
+    for (const player of state.players) {
+      for (const token of ownedTokens(state, player.uid)) {
+        animatedTokenAwardIds.add(tokenAwardId(state, player.uid, token.id));
+      }
+    }
+  }
+
+  async function startTokenFlights(awards: Array<{
+    token: Token;
+    recipientUid: string;
+    sourceBox: DOMRect;
+  }>) {
+    await tick();
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const flights = awards.flatMap(({ token, recipientUid, sourceBox }, index) => {
+      const destination = document.querySelector<HTMLElement>(
+        `[data-token-destination="${CSS.escape(recipientUid)}"]`
+      ) ?? document.querySelector<HTMLElement>('.token-area');
+      const destinationBox = destination?.getBoundingClientRect();
+      if (!destinationBox) return [];
+      const startSize = Math.min(sourceBox.width, sourceBox.height);
+      const endSize = Math.min(startSize, Math.max(22, Math.min(32, destinationBox.height)));
+      const startLeft = sourceBox.left + (sourceBox.width - startSize) / 2;
+      const startTop = sourceBox.top + (sourceBox.height - startSize) / 2;
+      const endLeft = destinationBox.left + (destinationBox.width - endSize) / 2;
+      const endTop = destinationBox.top + (destinationBox.height - endSize) / 2;
+      return [{
+        key: ++tokenFlightSequence,
+        token,
+        recipientUid,
+        hidden: token.kind.startsWith('bonus-') && recipientUid !== uid,
+        startLeft,
+        startTop,
+        startSize,
+        endLeft,
+        endTop,
+        endSize,
+        delay: index * 90
+      }];
+    });
+    tokenFlights = [...tokenFlights, ...flights];
+    for (const flight of flights) {
+      setTimeout(() => finishTokenFlight(flight.key), 720 + flight.delay);
+    }
+  }
+
+  function finishTokenFlight(key: number) {
+    tokenFlights = tokenFlights.filter((flight) => flight.key !== key);
+  }
+
+  function supplyTokenStyle(index: number, count: number): string {
+    return `--token-index: ${index}; --token-z: ${count - index}`;
+  }
+
+  function allOwnedTokens(playerUid: string): Token[] {
+    return ownedTokens(lobby, playerUid);
+  }
+
+  function ownedTokenStyle(index: number, count: number): string {
+    const step = count <= 1 ? 0 : Math.min(0.52, 4.6 / (count - 1));
+    const rotation = [-5, 3, -2, 5, -3, 2][index % 6];
+    return `--owned-x: ${(index * step).toFixed(2)}rem; --owned-rotation: ${rotation}deg; z-index: ${index + 1}`;
+  }
+
+  function ownedTokenSpan(playerUid: string): string {
+    const count = allOwnedTokens(playerUid).length;
+    if (count <= 1) return '0rem';
+    return `${Math.min(4.6, (count - 1) * 0.52).toFixed(2)}rem`;
+  }
+
+  function tokenStackDescription(kind: Good): string {
+    const values = lobby.round?.goodsTokens[kind].map(({ value }) => value) ?? [];
+    return values.length > 0
+      ? `${cardLabel(kind)} stack, top to bottom: ${values.join(', ')}`
+      : `${cardLabel(kind)} stack is empty`;
   }
 
   const cardLabel = (kind: string) => kind[0].toUpperCase() + kind.slice(1);
@@ -1020,7 +1178,24 @@
               {/each}
             </span>
           </div>
-          <div class="opponent-private">
+          <div
+            class="opponent-private"
+            data-token-destination={opponentUid()}
+          >
+            <span
+              class="opponent-token-pile"
+              style={`--owned-span: ${ownedTokenSpan(opponentUid())}`}
+              aria-hidden="true"
+            >
+              {#each allOwnedTokens(opponentUid()) as token, index}
+                <span
+                  class="opponent-owned-token"
+                  style={ownedTokenStyle(index, opponentTokenCount())}
+                >
+                  <TokenChip {token} hidden />
+                </span>
+              {/each}
+            </span>
             <span>{opponentTokenCount()} tokens · values hidden</span>
           </div>
         </div>
@@ -1126,7 +1301,27 @@
           </div>
         </section>
         <section class="token-area" aria-label="Token supplies">
-          <h2>Token supplies</h2>
+          <div class="token-supply-heading">
+            <h2>Token supplies</h2>
+            <div class="bonus-supplies" aria-label="Face-down bonus token supplies">
+              {#each bonusSizes as size}
+                <span class="bonus-supply" aria-label={`${size}-card bonus stack, ${lobby.round.bonusTokens[size].length} tokens left`}>
+                  <span>{size}+</span>
+                  <span class="bonus-chip-stack" aria-hidden="true">
+                    {#each lobby.round.bonusTokens[size] as token, index}
+                      <span
+                        class="bonus-supply-token"
+                        data-supply-token-id={token.id}
+                        style={supplyTokenStyle(index, lobby.round.bonusTokens[size].length)}
+                      >
+                        <TokenChip {token} hidden />
+                      </span>
+                    {/each}
+                  </span>
+                </span>
+              {/each}
+            </div>
+          </div>
           <div class="tokens">
             {#each goods as kind}
               <button
@@ -1134,24 +1329,65 @@
                 type="button"
                 disabled={!canSellTo(kind)}
                 aria-label={saleActionLabel(kind)}
+                aria-describedby={`token-stack-${kind}`}
+                data-token-kind={kind}
                 onclick={() => sellToStack(kind)}
               >
-                <img src={componentImage(kind)} alt="" />
-                <strong>{cardLabel(kind)}</strong>
-                <span>{lobby.round.goodsTokens[kind].length} left</span>
-                <span>Next {lobby.round.goodsTokens[kind][0]?.value ?? '—'}</span>
+                <span id={`token-stack-${kind}`} class="visually-hidden">
+                  {tokenStackDescription(kind)}
+                </span>
+                <strong class="token-supply-label">{cardLabel(kind)}</strong>
+                <span
+                  class="supply-chip-stack"
+                  style={`--supply-count: ${lobby.round.goodsTokens[kind].length}`}
+                  aria-hidden="true"
+                >
+                  {#each lobby.round.goodsTokens[kind] as token, index}
+                    <span
+                      class="supply-token"
+                      data-supply-token-id={token.id}
+                      data-stack-position={index}
+                      style={supplyTokenStyle(index, lobby.round.goodsTokens[kind].length)}
+                    >
+                      <TokenChip {token} sideRim />
+                    </span>
+                  {:else}
+                    <span class="empty-token-stack">—</span>
+                  {/each}
+                </span>
+                <span class="token-supply-count">{lobby.round.goodsTokens[kind].length} left</span>
               </button>
             {/each}
           </div>
-          <p>
-            Your tokens:
-            <strong>
-              {(lobby.round.ownedGoodsTokens[uid]?.length ?? 0) +
-                (lobby.round.ownedBonusTokens[uid]?.length ?? 0)}
-              worth {ownedTokenValue()}
-            </strong>
-            · Bonus values are private.
-          </p>
+          <div
+            class="own-token-tray"
+            data-token-destination={uid}
+          >
+            <span
+              class="owned-token-pile"
+              style={`--owned-span: ${ownedTokenSpan(uid)}`}
+              aria-hidden="true"
+            >
+              {#each allOwnedTokens(uid) as token, index}
+                <span
+                  class="owned-token"
+                  data-owned-token-id={token.id}
+                  style={ownedTokenStyle(index, allOwnedTokens(uid).length)}
+                >
+                  <TokenChip {token} />
+                </span>
+              {/each}
+            </span>
+            <span>
+              Your tokens:
+              <strong>
+                {(lobby.round.ownedGoodsTokens[uid]?.length ?? 0) +
+                  (lobby.round.ownedBonusTokens[uid]?.length ?? 0)}
+                worth {ownedTokenValue()}
+              </strong>
+              · Bonus values are private.
+            </span>
+          </div>
         </section>
       </section>
     {/if}
@@ -1192,6 +1428,19 @@
     >
       <img src={componentImage(flight.kind)} alt="" draggable="false" />
       <span>{flight.label}</span>
+    </span>
+  {/each}
+  {#each tokenFlights as flight (flight.key)}
+    <span
+      class="token-flight"
+      data-token-flight-id={flight.token.id}
+      data-token-kind={flight.token.kind}
+      data-token-recipient={flight.recipientUid}
+      aria-hidden="true"
+      style={`--token-flight-start-left: ${flight.startLeft}px; --token-flight-start-top: ${flight.startTop}px; --token-flight-start-size: ${flight.startSize}px; --token-flight-end-left: ${flight.endLeft}px; --token-flight-end-top: ${flight.endTop}px; --token-flight-end-size: ${flight.endSize}px; --token-flight-delay: ${flight.delay}ms`}
+      onanimationend={() => finishTokenFlight(flight.key)}
+    >
+      <TokenChip token={flight.token} hidden={flight.hidden} />
     </span>
   {/each}
 </main>
@@ -1531,18 +1780,20 @@
   }
   .token {
     display: grid;
+    justify-items: center;
     gap: 0.1rem;
     min-width: 0;
     min-height: 44px;
-    padding: 0.45rem 0.25rem;
-    border: 0;
+    padding: 0.25rem;
+    border: 1px solid transparent;
     border-radius: 0.55rem;
-    color: white;
+    background: transparent;
+    color: #183a37;
     cursor: pointer;
     text-align: center;
   }
   .token span { font-size: 0.72rem; }
-  .token-area > p { margin: 0.65rem 0 0; }
+  .own-token-tray { margin: 0.65rem 0 0; }
   .score-review > h2 {
     margin: 0.5rem auto 1rem;
     font: 700 2.4rem 'Cormorant Garamond', serif;
@@ -1578,6 +1829,9 @@
       transition-duration: 0s !important;
       animation-duration: 0s !important;
       animation-iteration-count: 1 !important;
+    }
+    .token-flight {
+      animation-delay: 0ms !important;
     }
   }
   @media (forced-colors: active) {
@@ -1961,7 +2215,26 @@
     white-space: nowrap;
   }
   .opponent-private {
+    grid-template-rows: minmax(1.3rem, auto) auto;
+    justify-items: end;
     text-align: right;
+  }
+  .opponent-token-pile,
+  .owned-token-pile {
+    position: relative;
+    display: block;
+    width: calc(1.35rem + var(--owned-span, 0rem));
+    height: 1.45rem;
+  }
+  .opponent-owned-token,
+  .owned-token {
+    position: absolute;
+    top: 0.05rem;
+    left: var(--owned-x);
+    display: block;
+    width: 1.3rem;
+    height: 1.3rem;
+    transform: rotate(var(--owned-rotation));
   }
   .opponent-hand {
     display: flex;
@@ -2178,6 +2451,8 @@
     }
   }
   .token-area {
+    --supply-chip-size: clamp(1.75rem, 5vmin, 2.25rem);
+    --supply-chip-step: clamp(0.27rem, 0.72vmin, 0.36rem);
     display: grid;
     min-width: 0;
     grid-area: tokens;
@@ -2187,42 +2462,163 @@
     border-radius: 0.8rem;
     background: #e9dcc1;
   }
+  .token-supply-heading {
+    display: flex;
+    min-width: 0;
+    min-height: 2rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.3rem;
+  }
+  .token-supply-heading h2 {
+    margin: 0;
+  }
+  .bonus-supplies {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.22rem;
+  }
+  .bonus-supply {
+    display: grid;
+    grid-template-columns: auto 1.45rem;
+    align-items: center;
+    gap: 0.08rem;
+    color: #315f58;
+    font-size: clamp(0.52rem, 1.1vmin, 0.66rem);
+    font-weight: 700;
+  }
+  .bonus-chip-stack {
+    position: relative;
+    display: block;
+    width: 1.45rem;
+    height: 1.65rem;
+  }
+  .bonus-supply-token {
+    position: absolute;
+    top: calc(var(--token-index) * 0.035rem);
+    left: calc(var(--token-index) * 0.025rem);
+    display: block;
+    width: 1.35rem;
+    height: 1.35rem;
+    z-index: var(--token-z);
+  }
   .tokens {
     grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 0.2rem;
+    align-items: start;
+    gap: 0.12rem;
   }
   .token {
     position: relative;
+    display: grid;
     min-width: 0;
-    min-height: 3.5rem;
-    align-content: end;
-    padding: 0.2rem;
-    overflow: hidden;
+    min-height: 44px;
+    grid-template-rows: auto auto auto;
+    justify-items: center;
+    align-content: start;
+    gap: 0.04rem;
+    padding: 0.08rem;
+    overflow: visible;
+    border: 1px solid transparent;
     border-radius: 0.5rem;
-    background: #183a37;
-    isolation: isolate;
+    background: transparent;
+    color: #183a37;
   }
-  .token img {
-    position: absolute;
-    z-index: -1;
-    width: 100%;
-    height: 100%;
-    inset: 0;
-    opacity: 0.56;
-    object-fit: cover;
+  .token:not(:disabled):hover {
+    border-color: #8e826b;
+    background: rgb(255 250 240 / 55%);
   }
-  .token strong,
-  .token span {
+  .token:disabled {
+    opacity: 0.72;
+  }
+  .token-supply-label,
+  .token-supply-count {
+    max-width: 100%;
     overflow: hidden;
-    font-size: clamp(0.54rem, 1.2vmin, 0.7rem);
-    line-height: 1.05;
+    color: #183a37;
+    font-size: clamp(0.52rem, 1.15vmin, 0.68rem);
+    line-height: 1;
     text-overflow: ellipsis;
-    text-shadow: 0 1px 2px #000;
+    text-shadow: none;
     white-space: nowrap;
   }
-  .token-area > p {
-    margin: 0.25rem 0 0;
+  .supply-chip-stack {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: var(--supply-chip-size);
+  }
+  .supply-token {
+    position: absolute;
+    z-index: var(--token-z);
+    top: 0;
+    left: calc(
+      50% -
+      (var(--supply-chip-size) + (var(--supply-count) - 1) * var(--supply-chip-step)) / 2 +
+      var(--token-index) * var(--supply-chip-step)
+    );
+    display: block;
+    width: var(--supply-chip-size);
+    height: var(--supply-chip-size);
+    transform: none;
+  }
+  .empty-token-stack {
+    display: grid;
+    width: var(--supply-chip-size);
+    height: var(--supply-chip-size);
+    margin: 0 auto;
+    place-items: center;
+    border: 2px dashed #8e826b;
+    border-radius: 50%;
+    color: #66746e;
+  }
+  .own-token-tray {
+    display: flex;
+    min-width: 0;
+    min-height: 1.5rem;
+    align-items: center;
+    gap: 0.3rem;
+    margin: 0.18rem 0 0;
     font-size: 0.7rem;
+  }
+  .own-token-tray > span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .owned-token-pile {
+    flex: 0 0 calc(1.35rem + var(--owned-span, 0rem));
+  }
+  .token-flight {
+    position: fixed;
+    z-index: 130;
+    top: var(--token-flight-start-top);
+    left: var(--token-flight-start-left);
+    display: block;
+    width: var(--token-flight-start-size);
+    height: var(--token-flight-start-size);
+    pointer-events: none;
+    filter: drop-shadow(0 0.45rem 0.45rem rgb(24 58 55 / 38%));
+    animation: token-award-flight 600ms ease-in-out var(--token-flight-delay) both;
+  }
+  @keyframes token-award-flight {
+    0% {
+      top: var(--token-flight-start-top);
+      left: var(--token-flight-start-left);
+      width: var(--token-flight-start-size);
+      height: var(--token-flight-start-size);
+      opacity: 1;
+      transform: rotate(0deg) scale(1);
+    }
+    100% {
+      top: var(--token-flight-end-top);
+      left: var(--token-flight-end-left);
+      width: var(--token-flight-end-size);
+      height: var(--token-flight-end-size);
+      opacity: 0.92;
+      transform: rotate(360deg) scale(1);
+    }
   }
   .compact > [role='status'] {
     position: absolute;
@@ -2559,9 +2955,10 @@
       padding: 0.2rem 0.45rem;
     }
     .token {
-      min-height: 3rem;
+      --supply-chip-size: 1.55rem;
+      --supply-chip-step: 0.22rem;
     }
-    .token-area > p {
+    .own-token-tray > span:last-child {
       display: none;
     }
     .camel-herd {
