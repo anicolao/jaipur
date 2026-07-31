@@ -3,6 +3,7 @@ export const REDUCER_VERSION = 1;
 
 export type GameEventType =
   | 'game/created'
+  | 'tabletop/created'
   | 'player/joined'
   | 'player/ready'
   | 'round/started'
@@ -27,6 +28,7 @@ export interface Player {
   uid: string;
   displayName: string;
   ready: boolean;
+  seat: 1 | 2;
 }
 
 export interface GameActivity {
@@ -49,6 +51,7 @@ export interface GameActivity {
 export interface LobbyState {
   gameId: string | null;
   hostUid: string | null;
+  mode: 'standard' | 'tabletop';
   players: Player[];
   activity: GameActivity[];
   diagnostics: string[];
@@ -57,6 +60,7 @@ export interface LobbyState {
 export const EMPTY_LOBBY: LobbyState = {
   gameId: null,
   hostUid: null,
+  mode: 'standard',
   players: [],
   activity: [],
   diagnostics: []
@@ -87,16 +91,23 @@ export function reduceLobby(events: GameEvent[]): LobbyState {
       continue;
     }
 
-    if (event.type === 'game/created') {
+    if (event.type === 'game/created' || event.type === 'tabletop/created') {
       const gameId = event.payload.gameId;
-      const displayName = nameFrom(event);
-      if (state.gameId || typeof gameId !== 'string' || !displayName) {
+      const displayName = event.type === 'game/created' ? nameFrom(event) : null;
+      if (
+        state.gameId ||
+        typeof gameId !== 'string' ||
+        (event.type === 'game/created' && !displayName)
+      ) {
         state.diagnostics.push(`${event.id}: invalid game creation`);
         continue;
       }
       state.gameId = gameId;
       state.hostUid = event.actorUid;
-      state.players.push({ uid: event.actorUid, displayName, ready: false });
+      state.mode = event.type === 'tabletop/created' ? 'tabletop' : 'standard';
+      if (displayName) {
+        state.players.push({ uid: event.actorUid, displayName, ready: false, seat: 1 });
+      }
       state.activity.push({
         id: event.id,
         type: event.type,
@@ -112,15 +123,25 @@ export function reduceLobby(events: GameEvent[]): LobbyState {
 
     if (event.type === 'player/joined') {
       const displayName = nameFrom(event);
+      const requestedSeat = event.payload.seat;
+      const openSeats = ([1, 2] as const).filter(
+        (seat) => !state.players.some((player) => player.seat === seat)
+      );
+      const seat = requestedSeat === 1 || requestedSeat === 2
+        ? requestedSeat
+        : openSeats[0];
       if (
         !displayName ||
+        !seat ||
+        !openSeats.includes(seat) ||
         state.players.length >= 2 ||
         state.players.some(({ uid }) => uid === event.actorUid)
       ) {
         state.diagnostics.push(`${event.id}: invalid join`);
         continue;
       }
-      state.players.push({ uid: event.actorUid, displayName, ready: false });
+      state.players.push({ uid: event.actorUid, displayName, ready: false, seat });
+      state.players.sort((left, right) => left.seat - right.seat);
       state.activity.push({
         id: event.id,
         type: event.type,
@@ -130,7 +151,12 @@ export function reduceLobby(events: GameEvent[]): LobbyState {
     }
 
     if (event.type === 'player/ready') {
-      const player = state.players.find(({ uid }) => uid === event.actorUid);
+      const requestedPlayerUid = event.payload.playerUid;
+      const targetUid = state.mode === 'tabletop' && event.actorUid === state.hostUid &&
+        typeof requestedPlayerUid === 'string'
+        ? requestedPlayerUid
+        : event.actorUid;
+      const player = state.players.find(({ uid }) => uid === targetUid);
       if (!player || typeof event.payload.ready !== 'boolean') {
         state.diagnostics.push(`${event.id}: invalid ready state`);
         continue;
@@ -139,7 +165,7 @@ export function reduceLobby(events: GameEvent[]): LobbyState {
       state.activity.push({
         id: event.id,
         type: event.type,
-        actorUid: event.actorUid,
+        actorUid: targetUid,
         ready: event.payload.ready
       });
     }

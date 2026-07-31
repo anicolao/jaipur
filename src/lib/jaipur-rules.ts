@@ -274,6 +274,19 @@ export function reduceGame(events: GameEvent[]): GameState {
   let winnerUid: string | null = null;
   let epoch = 1;
 
+  const actionActorUid = (event: GameEvent): string => {
+    const requestedPlayerUid = event.payload.playerUid;
+    if (
+      lobby.mode === 'tabletop' &&
+      event.actorUid === lobby.hostUid &&
+      typeof requestedPlayerUid === 'string' &&
+      playerUids.includes(requestedPlayerUid)
+    ) {
+      return requestedPlayerUid;
+    }
+    return event.actorUid;
+  };
+
   const finishAction = (actorUid: string): Pick<GameActivity, 'roundWinnerUid' | 'gameWinnerUid'> => {
     if (!round) return {};
     round.activeUid = playerUids.find((uid) => uid !== actorUid) ?? round.activeUid;
@@ -375,11 +388,12 @@ export function reduceGame(events: GameEvent[]): GameState {
       continue;
     }
     if (event.type === 'cards/taken-one') {
+      const actorUid = actionActorUid(event);
       const cardId = event.payload.cardId;
-      const hand = round.hands[event.actorUid];
+      const hand = round.hands[actorUid];
       const marketIndex = round.market.findIndex(({ id }) => id === cardId);
       if (
-        event.actorUid !== round.activeUid ||
+        actorUid !== round.activeUid ||
         typeof cardId !== 'string' ||
         marketIndex < 0 ||
         round.market[marketIndex].kind === 'camel' ||
@@ -393,11 +407,11 @@ export function reduceGame(events: GameEvent[]): GameState {
       hand.push(card);
       const replacement = round.deck.shift();
       if (replacement) round.market.splice(marketIndex, 0, replacement);
-      const result = finishAction(event.actorUid);
+      const result = finishAction(actorUid);
       lobby.activity.push({
         id: event.id,
         type: event.type,
-        actorUid: event.actorUid,
+        actorUid,
         roundNumber: round.number,
         turnNumber: round.turnNumber - 1,
         cardIds: [card.id],
@@ -408,21 +422,22 @@ export function reduceGame(events: GameEvent[]): GameState {
     }
 
     if (event.type === 'cards/taken-camels') {
+      const actorUid = actionActorUid(event);
       const camels = round.market.filter(({ kind }) => kind === 'camel');
-      if (event.actorUid !== round.activeUid || camels.length === 0) {
+      if (actorUid !== round.activeUid || camels.length === 0) {
         lobby.diagnostics.push(`${event.id}: invalid camel take`);
         continue;
       }
       round.market = round.market.filter(({ kind }) => kind !== 'camel');
-      round.herds[event.actorUid].push(...camels);
+      round.herds[actorUid].push(...camels);
       while (round.market.length < 5 && round.deck.length > 0) {
         round.market.push(round.deck.shift()!);
       }
-      const result = finishAction(event.actorUid);
+      const result = finishAction(actorUid);
       lobby.activity.push({
         id: event.id,
         type: event.type,
-        actorUid: event.actorUid,
+        actorUid,
         roundNumber: round.number,
         turnNumber: round.turnNumber - 1,
         cardIds: camels.map(({ id }) => id),
@@ -433,17 +448,18 @@ export function reduceGame(events: GameEvent[]): GameState {
     }
 
     if (event.type === 'cards/exchanged') {
+      const actorUid = actionActorUid(event);
       const takenIds = event.payload.takenCardIds;
       const returnedIds = event.payload.returnedCardIds;
-      const hand = round.hands[event.actorUid];
-      const herd = round.herds[event.actorUid];
+      const hand = round.hands[actorUid];
+      const herd = round.herds[actorUid];
       if (
         !Array.isArray(takenIds) ||
         !Array.isArray(returnedIds) ||
         !hand ||
         !herd ||
-        event.actorUid !== round.activeUid ||
-        !isLegalExchange(round, event.actorUid, takenIds, returnedIds)
+        actorUid !== round.activeUid ||
+        !isLegalExchange(round, actorUid, takenIds, returnedIds)
       ) {
         lobby.diagnostics.push(`${event.id}: invalid exchange`);
         continue;
@@ -454,16 +470,16 @@ export function reduceGame(events: GameEvent[]): GameState {
         ...round.market.filter(({ id }) => !takenIds.includes(id)),
         ...returned
       ];
-      round.hands[event.actorUid] = [
+      round.hands[actorUid] = [
         ...hand.filter(({ id }) => !returnedIds.includes(id)),
         ...taken
       ];
-      round.herds[event.actorUid] = herd.filter(({ id }) => !returnedIds.includes(id));
-      const result = finishAction(event.actorUid);
+      round.herds[actorUid] = herd.filter(({ id }) => !returnedIds.includes(id));
+      const result = finishAction(actorUid);
       lobby.activity.push({
         id: event.id,
         type: event.type,
-        actorUid: event.actorUid,
+        actorUid,
         roundNumber: round.number,
         turnNumber: round.turnNumber - 1,
         cardIds: taken.map(({ id }) => id),
@@ -476,28 +492,29 @@ export function reduceGame(events: GameEvent[]): GameState {
     }
 
     if (event.type === 'cards/sold') {
+      const actorUid = actionActorUid(event);
       const kind = event.payload.kind;
       const cardIds = event.payload.cardIds;
-      const previousTokenCount = event.actorUid in round.ownedGoodsTokens
-        ? (round.ownedGoodsTokens[event.actorUid]?.length ?? 0) +
-          (round.ownedBonusTokens[event.actorUid]?.length ?? 0)
+      const previousTokenCount = actorUid in round.ownedGoodsTokens
+        ? (round.ownedGoodsTokens[actorUid]?.length ?? 0) +
+          (round.ownedBonusTokens[actorUid]?.length ?? 0)
         : 0;
       if (
         typeof kind !== 'string' ||
         !Array.isArray(cardIds) ||
         !isGood(kind) ||
-        !applySale(round, event.actorUid, kind, cardIds)
+        !applySale(round, actorUid, kind, cardIds)
       ) {
         lobby.diagnostics.push(`${event.id}: invalid sale`);
         continue;
       }
-      const result = finishAction(event.actorUid);
-      const nextTokenCount = (round.ownedGoodsTokens[event.actorUid]?.length ?? 0) +
-        (round.ownedBonusTokens[event.actorUid]?.length ?? 0);
+      const result = finishAction(actorUid);
+      const nextTokenCount = (round.ownedGoodsTokens[actorUid]?.length ?? 0) +
+        (round.ownedBonusTokens[actorUid]?.length ?? 0);
       lobby.activity.push({
         id: event.id,
         type: event.type,
-        actorUid: event.actorUid,
+        actorUid,
         roundNumber: round.number,
         turnNumber: round.turnNumber - 1,
         cardIds: [...cardIds] as string[],

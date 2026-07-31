@@ -77,6 +77,46 @@ describe('taking one good', () => {
       cardKinds: [card.kind]
     });
   });
+
+  it('accepts a tabletop-hosted action on behalf of the active seat', () => {
+    const base = (id: string, type: GameEvent['type'], actorUid: string, payload: Record<string, unknown>): GameEvent => ({
+      id,
+      type,
+      actorUid,
+      payload,
+      clientSeq: 1,
+      createdAtMillis: Number(id.match(/\d+/)?.[0] ?? 1),
+      schemaVersion: 1,
+      reducerVersion: 1
+    });
+    const setup = [
+      base('table-1', 'tabletop/created', 'table', { gameId: 'table' }),
+      base('a-2', 'player/joined', 'a', { displayName: 'A', seat: 1 }),
+      base('b-3', 'player/joined', 'b', { displayName: 'B', seat: 2 }),
+      base('a-4', 'player/ready', 'a', { ready: true }),
+      base('b-5', 'player/ready', 'b', { ready: true }),
+      base('table-6', 'round/started', 'table', { seed: 'tabletop', starterUid: 'a' })
+    ];
+    const before = reduceGame(setup);
+    const card = legalSingleGoods(before.round!, 'a')[0];
+    const after = reduceGame([
+      ...setup,
+      base('table-7', 'cards/taken-one', 'table', {
+        playerUid: 'a',
+        cardId: card.id,
+        roundNumber: 1,
+        turnNumber: 1
+      })
+    ]);
+
+    expect(after.round?.hands.a).toContainEqual(card);
+    expect(after.round?.activeUid).toBe('b');
+    expect(after.activity.at(-1)).toMatchObject({
+      type: 'cards/taken-one',
+      actorUid: 'a',
+      cardIds: [card.id]
+    });
+  });
 });
 
 describe('taking camels', () => {
