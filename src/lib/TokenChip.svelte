@@ -70,22 +70,18 @@
     width: 100%;
     height: 100%;
     inset: 0;
-    opacity: 0.82;
+    opacity: 0.94;
     object-fit: cover;
   }
   .token-chip-center {
     z-index: 1;
-    display: grid;
-    min-width: 46%;
-    min-height: 46%;
-    place-items: center;
-    border: 0.08rem solid rgb(255 250 229 / 82%);
-    border-radius: 50%;
-    background: rgb(24 58 55 / 72%);
-    font-size: 48%;
+    color: #fffbea;
+    font-size: 54%;
     font-weight: 700;
     line-height: 1;
-    text-shadow: 0 1px 2px #000;
+    paint-order: stroke fill;
+    text-shadow: 0 1px 1px rgb(0 0 0 / 72%);
+    -webkit-text-stroke: 0.06em #07110f;
   }
   .token-chip-rim {
     position: absolute;
@@ -112,9 +108,9 @@
     bottom: 32%;
     left: auto;
     display: grid;
-    width: 0.3rem;
+    width: 0.44rem;
     padding: 0;
     place-items: center;
-    font-size: 0.28rem;
+    font-size: 0.4rem;
   }
 </style>

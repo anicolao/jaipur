@@ -36,6 +36,19 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
   await expect(initialSpiceTokens.locator('.token-chip-rim')).toHaveText([
     '5', '3', '3', '2', '2', '1', '1'
   ]);
+  const tokenBox = await initialSpiceTokens.first().boundingBox();
+  expect(tokenBox?.width).toBeGreaterThanOrEqual(48);
+  const centerValueStyle = await initialSpiceTokens.first().locator('.token-chip-center').evaluate(
+    (value) => {
+      const style = getComputedStyle(value);
+      return {
+        backgroundColor: style.backgroundColor,
+        strokeWidth: parseFloat(style.webkitTextStrokeWidth)
+      };
+    }
+  );
+  expect(centerValueStyle.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+  expect(centerValueStyle.strokeWidth).toBeGreaterThan(0);
   const firstSpiceId = await initialSpiceTokens.first().getAttribute('data-supply-token-id');
   const firstSpiceBox = await initialSpiceTokens.first().boundingBox();
   const firstZ = Number(await initialSpiceTokens.first().evaluate(
@@ -108,6 +121,8 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
           await expect(rival.locator('.opponent')).toContainText('values hidden');
           await expect(page.locator('.owned-token')).toHaveCount(4);
           await expect(rival.locator('.opponent-owned-token')).toHaveCount(4);
+          expect((await page.locator('.owned-token').first().boundingBox())?.width)
+            .toBeGreaterThanOrEqual(38);
           await page
             .locator('.token-area')
             .evaluate((element) => element.scrollIntoView({ block: 'center' }));

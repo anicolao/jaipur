@@ -751,7 +751,7 @@
       const destinationBox = destination?.getBoundingClientRect();
       if (!destinationBox) return [];
       const startSize = Math.min(sourceBox.width, sourceBox.height);
-      const endSize = Math.min(startSize, Math.max(22, Math.min(32, destinationBox.height)));
+      const endSize = Math.min(startSize, Math.max(34, Math.min(42, destinationBox.height)));
       const startLeft = sourceBox.left + (sourceBox.width - startSize) / 2;
       const startTop = sourceBox.top + (sourceBox.height - startSize) / 2;
       const endLeft = destinationBox.left + (destinationBox.width - endSize) / 2;
@@ -789,7 +789,7 @@
   }
 
   function ownedTokenStyle(index: number, count: number): string {
-    const step = count <= 1 ? 0 : Math.min(0.52, 4.6 / (count - 1));
+    const step = count <= 1 ? 0 : Math.min(0.68, 5.2 / (count - 1));
     const rotation = [-5, 3, -2, 5, -3, 2][index % 6];
     return `--owned-x: ${(index * step).toFixed(2)}rem; --owned-rotation: ${rotation}deg; z-index: ${index + 1}`;
   }
@@ -797,7 +797,7 @@
   function ownedTokenSpan(playerUid: string): string {
     const count = allOwnedTokens(playerUid).length;
     if (count <= 1) return '0rem';
-    return `${Math.min(4.6, (count - 1) * 0.52).toFixed(2)}rem`;
+    return `${Math.min(5.2, (count - 1) * 0.68).toFixed(2)}rem`;
   }
 
   function tokenStackDescription(kind: Good): string {
@@ -2215,7 +2215,7 @@
     white-space: nowrap;
   }
   .opponent-private {
-    grid-template-rows: minmax(1.3rem, auto) auto;
+    grid-template-rows: auto auto;
     justify-items: end;
     text-align: right;
   }
@@ -2223,8 +2223,11 @@
   .owned-token-pile {
     position: relative;
     display: block;
-    width: calc(1.35rem + var(--owned-span, 0rem));
-    height: 1.45rem;
+    width: calc(2.45rem + var(--owned-span, 0rem));
+    height: 2.55rem;
+  }
+  .opponent-token-pile:empty {
+    display: none;
   }
   .opponent-owned-token,
   .owned-token {
@@ -2232,8 +2235,8 @@
     top: 0.05rem;
     left: var(--owned-x);
     display: block;
-    width: 1.3rem;
-    height: 1.3rem;
+    width: 2.4rem;
+    height: 2.4rem;
     transform: rotate(var(--owned-rotation));
   }
   .opponent-hand {
@@ -2451,8 +2454,8 @@
     }
   }
   .token-area {
-    --supply-chip-size: clamp(1.75rem, 5vmin, 2.25rem);
-    --supply-chip-step: clamp(0.27rem, 0.72vmin, 0.36rem);
+    --supply-chip-size: clamp(3rem, 8vmin, 3.75rem);
+    --supply-chip-step: clamp(0.12rem, 0.32vmin, 0.2rem);
     display: grid;
     min-width: 0;
     grid-area: tokens;
@@ -2482,7 +2485,7 @@
   }
   .bonus-supply {
     display: grid;
-    grid-template-columns: auto 1.45rem;
+    grid-template-columns: auto 2.4rem;
     align-items: center;
     gap: 0.08rem;
     color: #315f58;
@@ -2492,16 +2495,16 @@
   .bonus-chip-stack {
     position: relative;
     display: block;
-    width: 1.45rem;
-    height: 1.65rem;
+    width: 2.4rem;
+    height: 2.6rem;
   }
   .bonus-supply-token {
     position: absolute;
     top: calc(var(--token-index) * 0.035rem);
     left: calc(var(--token-index) * 0.025rem);
     display: block;
-    width: 1.35rem;
-    height: 1.35rem;
+    width: 2.3rem;
+    height: 2.3rem;
     z-index: var(--token-z);
   }
   .tokens {
@@ -2576,7 +2579,7 @@
   .own-token-tray {
     display: flex;
     min-width: 0;
-    min-height: 1.5rem;
+    min-height: 2.55rem;
     align-items: center;
     gap: 0.3rem;
     margin: 0.18rem 0 0;
@@ -2588,7 +2591,13 @@
     white-space: nowrap;
   }
   .owned-token-pile {
-    flex: 0 0 calc(1.35rem + var(--owned-span, 0rem));
+    flex: 0 0 calc(2.45rem + var(--owned-span, 0rem));
+  }
+  .owned-token-pile:empty {
+    display: none;
+  }
+  .own-token-tray:has(.owned-token-pile:empty) {
+    min-height: 1.3rem;
   }
   .token-flight {
     position: fixed;
@@ -2827,6 +2836,9 @@
     .token {
       min-height: 3.35rem;
     }
+    .token-supply-count {
+      display: none;
+    }
     .token-area {
       padding: 0.2rem;
     }
@@ -2955,8 +2967,8 @@
       padding: 0.2rem 0.45rem;
     }
     .token {
-      --supply-chip-size: 1.55rem;
-      --supply-chip-step: 0.22rem;
+      --supply-chip-size: 2.55rem;
+      --supply-chip-step: 0.09rem;
     }
     .own-token-tray > span:last-child {
       display: none;
