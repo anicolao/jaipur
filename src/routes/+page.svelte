@@ -43,9 +43,6 @@
     startLeft: number;
     startTop: number;
     startSize: number;
-    middleLeft: number;
-    middleTop: number;
-    middleSize: number;
     endLeft: number;
     endTop: number;
     endSize: number;
@@ -307,9 +304,9 @@
         .filter(([targetId]) => targetId !== marketCardId)
         .map(([, returnId]) => returnId)
     );
-    return lobby.round?.herds[uid]?.find(
-      ({ id }) => id === currentReturn || !usedReturns.has(id)
-    );
+    return [...(lobby.round?.herds[uid] ?? [])]
+      .reverse()
+      .find(({ id }) => id === currentReturn || !usedReturns.has(id));
   }
 
   function availableReturnCards(marketCardId: string): Card[] {
@@ -377,7 +374,6 @@
     const startTop = sourceBox.top + (sourceBox.height - startSize) / 2;
     const endLeft = destinationBox.left + (destinationBox.width - endSize) / 2;
     const endTop = destinationBox.top + (destinationBox.height - endSize) / 2;
-    const distance = Math.hypot(endLeft - startLeft, endTop - startTop);
     const key = ++returnFlightSequence;
     returnFlights = [
       ...returnFlights,
@@ -390,9 +386,6 @@
         startLeft,
         startTop,
         startSize,
-        middleLeft: (startLeft + endLeft) / 2,
-        middleTop: Math.min(startTop, endTop) - Math.min(96, distance * 0.2),
-        middleSize: (startSize + endSize) / 2,
         endLeft,
         endTop,
         endSize
@@ -440,7 +433,6 @@
       assignExchangeReturn(activeExchangeTarget, camel.id);
       return;
     }
-    selectedHand = [];
     selectedCamelId = selectedCamelId === camel.id ? null : camel.id;
   }
 
@@ -461,7 +453,6 @@
       assignExchangeReturn(activeExchangeTarget, card.id);
       return;
     }
-    selectedCamelId = null;
     selectedHand = toggleSelection(selectedHand, card.id);
   }
 
@@ -905,8 +896,11 @@
                   {exchangeMarketIds().length} market
                   {exchangeMarketIds().length === 1 ? 'card' : 'cards'} loaded ·
                   hand {projectedHandSize()} / 7
+                {:else if selectedCamelId && selectedHand.length > 0}
+                  {selectedHand.length} hand {selectedHand.length === 1 ? 'card' : 'cards'} and 1 camel selected ·
+                  choose dashed return targets.
                 {:else if selectedCamelId}
-                  Camel selected · choose a dashed return target.
+                  1 camel selected · choose a dashed return target.
                 {:else}
                   {selectedHand.length} hand {selectedHand.length === 1 ? 'card' : 'cards'} selected ·
                   choose a matching token stack or a dashed return target.
@@ -1098,6 +1092,7 @@
                   {#each ownHerdCards() as camel, index}
                     <span
                       class="own-camel-card"
+                      class:selected={selectedCamelId === camel.id}
                       data-return-source={camel.id}
                       style={ownCamelStackStyle(index)}
                     >
@@ -1192,7 +1187,7 @@
       data-flight-card-id={flight.cardId}
       data-flight-target-id={flight.marketCardId}
       aria-hidden="true"
-      style={`--flight-start-left: ${flight.startLeft}px; --flight-start-top: ${flight.startTop}px; --flight-start-size: ${flight.startSize}px; --flight-middle-left: ${flight.middleLeft}px; --flight-middle-top: ${flight.middleTop}px; --flight-middle-size: ${flight.middleSize}px; --flight-end-left: ${flight.endLeft}px; --flight-end-top: ${flight.endTop}px; --flight-end-size: ${flight.endSize}px`}
+      style={`--flight-start-left: ${flight.startLeft}px; --flight-start-top: ${flight.startTop}px; --flight-start-size: ${flight.startSize}px; --flight-end-left: ${flight.endLeft}px; --flight-end-top: ${flight.endTop}px; --flight-end-size: ${flight.endSize}px`}
       onanimationend={() => finishReturnFlight(flight.key)}
     >
       <img src={componentImage(flight.kind)} alt="" draggable="false" />
@@ -2040,9 +2035,7 @@
     touch-action: none;
     user-select: none;
   }
-  button.own-camel-stack:not(:disabled):hover,
-  button.own-camel-stack.selected {
-    border-color: #d38b21;
+  button.own-camel-stack:not(:disabled):hover {
     background: rgb(255 240 206 / 70%);
   }
   .own-camel-stack.dragging {
@@ -2074,6 +2067,12 @@
   }
   .own-camel-card :global(small) {
     display: none;
+  }
+  .own-camel-card.selected {
+    border-color: #d38b21;
+    box-shadow:
+      0 0 0 3px #d38b21,
+      0 0.24rem 0.4rem rgb(24 58 55 / 28%);
   }
   .camel-pile {
     position: relative;
@@ -2135,7 +2134,7 @@
     box-shadow: 0 0.7rem 1.2rem rgb(24 58 55 / 36%);
     color: white;
     pointer-events: none;
-    animation: return-card-flight 520ms cubic-bezier(0.2, 0.72, 0.2, 1) both;
+    animation: return-card-flight 520ms ease-out both;
   }
   .return-flight-card img {
     width: 100%;
@@ -2168,14 +2167,6 @@
       height: var(--flight-start-size);
       opacity: 1;
       transform: rotate(0deg) scale(1);
-    }
-    48% {
-      top: var(--flight-middle-top);
-      left: var(--flight-middle-left);
-      width: var(--flight-middle-size);
-      height: var(--flight-middle-size);
-      opacity: 1;
-      transform: rotate(-7deg) scale(1.05);
     }
     100% {
       top: var(--flight-end-top);
