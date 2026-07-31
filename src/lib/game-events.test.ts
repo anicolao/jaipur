@@ -34,8 +34,8 @@ describe('lobby reducer', () => {
 
     expect(state.gameId).toBe('market');
     expect(state.players).toEqual([
-      { uid: 'a', displayName: 'Asha', ready: true },
-      { uid: 'b', displayName: 'Belen', ready: false }
+      { uid: 'a', displayName: 'Asha', ready: true, seat: 1 },
+      { uid: 'b', displayName: 'Belen', ready: false, seat: 2 }
     ]);
     expect(state.activity).toEqual([
       { id: 'a-1', type: 'game/created', actorUid: 'a' },
@@ -55,5 +55,26 @@ describe('lobby reducer', () => {
     expect(state.players).toHaveLength(2);
     expect(state.activity.map(({ id }) => id)).toEqual(['a-1', 'b-1']);
     expect(state.diagnostics).toHaveLength(2);
+  });
+
+  it('keeps a tabletop host neutral and assigns explicit player seats', () => {
+    const state = reduceLobby([
+      event('table-1', 'tabletop/created', 'table', { gameId: 'table' }),
+      event('b-1', 'player/joined', 'b', { displayName: 'Belen', seat: 2 }),
+      event('a-1', 'player/joined', 'a', { displayName: 'Asha', seat: 1 }),
+      event('table-2', 'player/ready', 'table', { playerUid: 'a', ready: true })
+    ]);
+
+    expect(state.mode).toBe('tabletop');
+    expect(state.hostUid).toBe('table');
+    expect(state.players).toEqual([
+      { uid: 'a', displayName: 'Asha', ready: true, seat: 1 },
+      { uid: 'b', displayName: 'Belen', ready: false, seat: 2 }
+    ]);
+    expect(state.activity.at(-1)).toMatchObject({
+      type: 'player/ready',
+      actorUid: 'a',
+      ready: true
+    });
   });
 });

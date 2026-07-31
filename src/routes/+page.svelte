@@ -232,10 +232,17 @@
       }
       if (!isRoomCode(requestedGameId)) return;
       const attached = attachRepository(services.db);
+      const requestedSeat = Number(new URLSearchParams(location.search).get('seat'));
       await attached.append(mode === 'create' ? 'game/created' : 'player/joined', {
         gameId: requestedGameId.trim(),
-        displayName: displayName.trim()
+        displayName: displayName.trim(),
+        ...(mode === 'join' && (requestedSeat === 1 || requestedSeat === 2)
+          ? { seat: requestedSeat }
+          : {})
       });
+      if (mode === 'join' && (requestedSeat === 1 || requestedSeat === 2)) {
+        await attached.append('player/ready', { ready: true });
+      }
       localStorage.setItem(`jaipur:${requestedGameId.trim()}:${uid}:name`, displayName.trim());
       shellOnly = false;
       const params = new URLSearchParams(location.search);
@@ -739,6 +746,9 @@
     switch (activity.type) {
       case 'game/created':
         description = 'opened the bazaar';
+        break;
+      case 'tabletop/created':
+        description = 'opened a tabletop';
         break;
       case 'player/joined':
         description = 'joined the bazaar';

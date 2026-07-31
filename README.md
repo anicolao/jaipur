@@ -28,6 +28,13 @@ five-letter code and places it in the invite URL. Share that URL with your
 rival; they enter their name and join. Both players then mark themselves ready
 and the host opens the first round.
 
+For a shared touch table, open [tabletop mode](https://anicolao.github.io/jaipur/tt/).
+Each load reserves a fresh game and displays one seat-specific QR code at each
+end of the table. Both players scan the code nearest them and choose a name on
+their phones; play then opens automatically on the shared screen. Player 1's
+edge and game log face the opposite side of the table, Player 2's face the
+near side, and either player performs their turn directly on the tabletop.
+
 ## Technical foundation
 
 - SvelteKit, TypeScript, Bun, and `@sveltejs/adapter-static`.
