@@ -1,13 +1,13 @@
 # Exchange goods
 
-Asha selects two market goods and atomically returns the same number of camels.
+Asha selects two market goods and atomically returns one hand card and one camel.
 
-## Two goods and two camels change zones together
+## Two goods change zones for one hand card and one camel
 
-![Two goods and two camels change zones together](./screenshots/000-exchange-complete-desktop.png)
+![Two goods change zones for one hand card and one camel](./screenshots/000-exchange-complete-desktop.png)
 
 **Verifications:**
 
 - [x] Diamond and gold enter Asha’s private hand
-- [x] The returned camels leave the herd and fill the market
+- [x] The mixed hand-and-herd return fills the market
 - [x] An exchange does not draw from the deck and both clients advance the turn
