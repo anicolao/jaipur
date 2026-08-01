@@ -4,7 +4,7 @@ Asha and Belen play production-size rounds until one earns two seals, then begin
 
 ## The match ends after 3 rounds and 191 ordinary actions
 
-![The match ends after 3 rounds and 191 ordinary actions](./screenshots/000-match-won-desktop.png)
+![The match ends after 3 rounds and 191 ordinary actions](./screenshots/000-match-won-desktop-linux.png)
 
 **Verifications:**
 
@@ -14,7 +14,7 @@ Asha and Belen play production-size rounds until one earns two seals, then begin
 
 ## The same traders begin a fresh first-to-two epoch
 
-![The same traders begin a fresh first-to-two epoch](./screenshots/001-rematch-started-desktop.png)
+![The same traders begin a fresh first-to-two epoch](./screenshots/001-rematch-started-desktop-linux.png)
 
 **Verifications:**
 

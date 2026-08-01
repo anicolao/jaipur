@@ -4,7 +4,7 @@ Both traders complete an ordinary full round, reveal its exact score, and open a
 
 ## The round ends and reveals its score after 65 ordinary actions
 
-![The round ends and reveals its score after 65 ordinary actions](./screenshots/000-round-scored-desktop.png)
+![The round ends and reveals its score after 65 ordinary actions](./screenshots/000-round-scored-desktop-linux.png)
 
 **Verifications:**
 
@@ -14,7 +14,7 @@ Both traders complete an ordinary full round, reveal its exact score, and open a
 
 ## The previous loser starts with reset round components
 
-![The previous loser starts with reset round components](./screenshots/001-next-round-open-desktop.png)
+![The previous loser starts with reset round components](./screenshots/001-next-round-open-desktop-linux.png)
 
 **Verifications:**
 

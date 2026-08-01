@@ -4,7 +4,7 @@ Asha takes the complete camel group into her herd and the deck refills every vac
 
 ## Every camel joins Asha’s herd
 
-![Every camel joins Asha’s herd](./screenshots/000-camels-taken-desktop.png)
+![Every camel joins Asha’s herd](./screenshots/000-camels-taken-desktop-linux.png)
 
 **Verifications:**
 

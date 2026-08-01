@@ -162,13 +162,13 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   expect(marketAfterExchange).toEqual(expectedMarketAfterExchange);
 
   const publicTake = page.locator('.market-card:not(.camel):not(:disabled)').first();
-  await armFlightCapture(page, '.table-card-flight.flips');
+  await armFlightCapture(page, '.table-card-flight');
   await publicTake.click();
   await waitForFlightCapture(page);
-  const refillFlight = page.locator('.table-card-flight.flips');
+  const refillFlight = page.locator('.table-card-flight');
   await expect(refillFlight).toHaveCount(1);
   await expect(refillFlight).toBeVisible();
-  await expect(refillFlight.locator('.table-card-flight-front')).toHaveCount(1);
+  await expect(refillFlight.locator('.table-card-flight-front')).toHaveCount(0);
   const refillFlightSizes = await refillFlight.evaluate((flight) => {
     const style = getComputedStyle(flight);
     return {

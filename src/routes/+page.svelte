@@ -1362,7 +1362,7 @@
                 data-market-slot-index={marketIndex}
               >
                 {#if isConcealed(card.id)}
-                  <button class="card-action concealed" type="button" data-card-id={card.id} data-card-concealed="true" aria-label="Reveal facedown card" onclick={() => revealCard(card.id)}>
+                  <button class="concealed-card" type="button" data-card-id={card.id} data-card-concealed="true" aria-label="Reveal facedown card" onclick={() => revealCard(card.id)}>
                     <PieceArt kind="card-back" label="Facedown card" />
                   </button>
                 {:else if lobby.round.activeUid === uid}
@@ -2125,8 +2125,20 @@
     background: #f6e5c7;
     color: #274d47;
   }
+  .reveal-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0.35rem 0 0.65rem;
+    padding: 0.45rem 0.6rem;
+    border: 2px dashed #a23e2a;
+    border-radius: 0.6rem;
+    background: #fffaf0;
+  }
+  .reveal-controls span { flex: 1 1 100%; }
   .cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.55rem; }
-  .cards article, .cards .card-action {
+  .cards article, .cards .card-action, .cards .concealed-card {
     min-height: 7.5rem;
     display: flex;
     flex-direction: column;
@@ -2139,6 +2151,7 @@
     font-weight: 700;
     text-align: left;
   }
+  .cards .concealed-card { cursor: pointer; }
   .cards .card-action { cursor: pointer; }
   .cards .card-action {
     transition:
@@ -2570,7 +2583,8 @@
     justify-self: end;
   }
   .cards article,
-  .cards .card-action {
+  .cards .card-action,
+  .cards .concealed-card {
     position: relative;
     display: grid;
     width: var(--card-size);
@@ -3218,7 +3232,8 @@
       justify-content: space-between;
     }
     .cards article,
-    .cards .card-action {
+    .cards .card-action,
+    .cards .concealed-card {
       min-height: 44px;
       padding: 0.12rem;
     }

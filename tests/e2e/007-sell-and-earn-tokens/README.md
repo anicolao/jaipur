@@ -4,7 +4,7 @@ Physical chips leave their ordered supplies and fly to each seller before Belen 
 
 ## A three-card sale awards ordered goods tokens and one hidden bonus
 
-![A three-card sale awards ordered goods tokens and one hidden bonus](./screenshots/000-large-sale-desktop.png)
+![A three-card sale awards ordered goods tokens and one hidden bonus](./screenshots/000-large-sale-desktop-linux.png)
 
 **Verifications:**
 
@@ -14,7 +14,7 @@ Physical chips leave their ordered supplies and fly to each seller before Belen 
 
 ## Belen completes a one-card ordinary-goods sale
 
-![Belen completes a one-card ordinary-goods sale](./screenshots/001-ordinary-sale-desktop.png)
+![Belen completes a one-card ordinary-goods sale](./screenshots/001-ordinary-sale-desktop-linux.png)
 
 **Verifications:**
 

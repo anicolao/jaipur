@@ -4,7 +4,7 @@ Asha selects two market goods and atomically returns one hand card and one camel
 
 ## Two goods change zones for one hand card and one camel
 
-![Two goods change zones for one hand card and one camel](./screenshots/000-exchange-complete-desktop.png)
+![Two goods change zones for one hand card and one camel](./screenshots/000-exchange-complete-desktop-linux.png)
 
 **Verifications:**
 

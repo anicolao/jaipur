@@ -407,7 +407,7 @@ export function reduceGame(events: GameEvent[]): GameState {
       const actionId = event.payload.actionId;
       const cardIds = event.payload.cardIds;
       const pending = typeof actionId === 'string' ? pendingReveals[actionId] : undefined;
-      if (!pending || actionActorUid(event) !== pending.actorUid || !Array.isArray(cardIds) ||
+      if (!pending || !Array.isArray(cardIds) ||
         !cardIds.every((id): id is string => typeof id === 'string' && pending.cardIds.includes(id))) {
         lobby.diagnostics.push(`${event.id}: invalid reveal`);
         continue;

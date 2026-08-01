@@ -7,6 +7,17 @@ export async function playRoundToCompletion(
   rival: Page,
   limit = 100
 ): Promise<number> {
+  const confirmReveals = async (page: Page) => {
+    const controls = page.locator('[data-confirm-reveal]');
+    for (let index = 0; index < 8 && await controls.count(); index += 1) {
+      try {
+        await controls.first().click({ timeout: 5000 });
+      } catch {
+        break;
+      }
+      await page.waitForTimeout(250);
+    }
+  };
   let active = await Promise.race([
     expect(host.locator('.market .card-action').first())
       .toBeVisible()
@@ -16,6 +27,7 @@ export async function playRoundToCompletion(
       .then(() => rival)
   ]);
   for (let action = 0; action < limit; action += 1) {
+    await confirmReveals(active);
     if (await active.locator('.score-review').count()) {
       await expect(host.locator('.score-review')).toBeVisible();
       return action;

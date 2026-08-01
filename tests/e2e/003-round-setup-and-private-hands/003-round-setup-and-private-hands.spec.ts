@@ -75,16 +75,27 @@ test('ready traders receive a deterministic private deal', async ({ browser, pag
     ]
   });
 
+  const confirm = async (view: typeof page) => {
+    const buttons = view.locator('[data-confirm-reveal]');
+    for (let index = 0; index < 8 && await buttons.count(); index += 1) {
+      await buttons.first().click();
+      await view.waitForTimeout(250);
+    }
+  };
   for (let draw = 0; draw < 2; draw += 1) {
+    await confirm(page);
     await page.locator('.market button.card-action:not(.camel):not(:disabled)').first().click();
     await expect(rival.getByText("Belen's turn")).toBeVisible();
+    await confirm(rival);
     await rival.locator('.market button.card-action:not(.camel):not(:disabled)').first().click();
     await expect(page.getByText("Asha's turn")).toBeVisible();
   }
   await page.getByRole('button', { name: 'Take all 5 camels' }).first().click();
   await expect(rival.getByText("Belen's turn")).toBeVisible();
+  await confirm(rival);
   await rival.locator('.market button.card-action:not(.camel):not(:disabled)').first().click();
   await expect(page.getByText("Asha's turn")).toBeVisible();
+  await confirm(page);
   await page.locator('.market button.card-action:not(.camel):not(:disabled)').first().click();
   await expect(rival.getByText("Belen's turn")).toBeVisible();
 
