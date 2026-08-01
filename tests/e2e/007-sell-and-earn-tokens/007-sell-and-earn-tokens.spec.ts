@@ -101,6 +101,11 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
   });
   const awardedFlights = page.locator('.token-flight');
   await expect(awardedFlights).toHaveCount(4);
+  await awardedFlights.evaluateAll((flights) => {
+    for (const flight of flights) {
+      for (const animation of flight.getAnimations()) animation.pause();
+    }
+  });
   await expect(awardedFlights.filter({ has: page.locator('[data-chip-kind="spice"]') }))
     .toHaveCount(3);
   const flightStartBox = await firstFlight.boundingBox();
