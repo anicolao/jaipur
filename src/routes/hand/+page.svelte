@@ -269,7 +269,7 @@
   .private-tokens h2 { font-size: 1.1rem; }
   .private-tokens strong { font-size: 0.78rem; }
   .private-earned-chip-row { display: flex; min-width: 0; height: 2.7rem; align-items: center; justify-content: flex-end; overflow: hidden; padding-right: 0.15rem; }
-  .private-earned-chip-row :global(.token-chip) { width: 2.55rem; height: 2.55rem; flex: 0 0 auto; margin-left: -0.72rem; }
+  .private-earned-chip-row :global(.token-chip) { width: 2.55rem; height: 2.55rem; flex: 0 0 auto; margin-left: -0.5rem; }
   .private-earned-chip-row :global(.token-chip:first-child) { margin-left: 0; }
   .no-tokens { color: #6e756d; font-size: 0.75rem; text-align: right; }
   .private-cards, .private-herd { margin-top: 0.75rem; }
