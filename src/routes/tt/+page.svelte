@@ -26,6 +26,11 @@
     type Token
   } from '$lib/jaipur-rules';
   import { generateRoomCode } from '$lib/room-code';
+  import {
+    beginPendingDraw,
+    pendingDrawIsCurrent,
+    type PendingDraw
+  } from '$lib/pending-draw';
 
   type Seat = 1 | 2;
   type SeatQr = { seat: Seat; url: string; image: string };
@@ -70,6 +75,7 @@
     delay: number;
   }>>([]);
   let busy = $state(false);
+  let pendingDraw = $state<PendingDraw | null>(null);
 
   const componentImage = (kind: Good | 'camel' | 'seal' | 'card-back') =>
     `${base}/components/${kind}.webp`;
@@ -111,6 +117,9 @@
           const newActivities = repositoryReady
             ? next.activity.filter(({ id }) => !knownActivityIds.has(id))
             : [];
+          if (pendingDraw && !busy && !pendingDrawIsCurrent(pendingDraw, next.round)) {
+            pendingDraw = null;
+          }
           lobby = next;
           for (const activity of next.activity) knownActivityIds.add(activity.id);
           repositoryReady = true;
@@ -225,18 +234,36 @@
     });
   }
 
-  async function chooseMarket(card: Card) {
-    const uid = lobby.round?.activeUid;
-    if (!uid) return;
-    if (card.kind === 'camel') {
-      await appendFor(uid, 'cards/taken-camels', {});
+  function chooseMarket(card: Card) {
+    if (!lobby.round || pendingDraw || busy) return;
+    pendingDraw = beginPendingDraw(lobby.round, card);
+  }
+
+  function abandonPendingDraw() {
+    if (busy) return;
+    pendingDraw = null;
+  }
+
+  async function confirmPendingDraw() {
+    const draw = pendingDraw;
+    if (!draw || !pendingDrawIsCurrent(draw, lobby.round)) {
+      pendingDraw = null;
       return;
     }
-    await appendFor(uid, 'cards/taken-one', { cardId: card.id });
+    if (draw.kind === 'camels') {
+      await appendFor(draw.activeUid, 'cards/taken-camels', {});
+    } else {
+      await appendFor(draw.activeUid, 'cards/taken-one', { cardId: draw.cardIds[0] });
+    }
+    pendingDraw = null;
+  }
+
+  function isPendingDrawCard(cardId: string): boolean {
+    return pendingDraw?.cardIds.includes(cardId) ?? false;
   }
 
   async function chooseExchangeTarget(uid: string, marketCardId: string) {
-    if (!lobby.round || lobby.round.activeUid !== uid || busy) return;
+    if (!lobby.round || lobby.round.activeUid !== uid || busy || pendingDraw) return;
     const loads = exchangeLoads(uid);
     const loadedReturn = loads[marketCardId];
     if (loadedReturn) {
@@ -257,7 +284,7 @@
   }
 
   async function confirmExchange(uid: string) {
-    if (!lobby.round) return;
+    if (!lobby.round || pendingDraw) return;
     const loads = exchangeLoads(uid);
     const takenCardIds = Object.keys(loads);
     const returnedCardIds = Object.values(loads);
@@ -278,7 +305,7 @@
 
   function canSell(kind: Good): boolean {
     const uid = lobby.round?.activeUid;
-    if (!uid || !lobby.round || busy || Object.keys(exchangeLoads(uid)).length > 0) return false;
+    if (!uid || !lobby.round || busy || pendingDraw || Object.keys(exchangeLoads(uid)).length > 0) return false;
     const ids = saleIds(uid, kind);
     return isLegalSale(lobby.round, uid, kind, ids);
   }
@@ -650,6 +677,7 @@
 
   <section
     class="shared-market"
+    class:draw-pending={Boolean(pendingDraw)}
     aria-label="Shared market"
     style={`--market-art: url("${componentImage('card-back')}")`}
   >
@@ -666,17 +694,37 @@
       {/if}
     </header>
     {#if lobby.round?.status === 'active'}
+      {#if pendingDraw}
+        <div class="draw-confirmation" role="group" aria-label="Confirm draw" data-pending-draw={pendingDraw.kind}>
+          <span>{pendingDraw.kind === 'camels' ? `Take all ${pendingDraw.cardIds.length} camels?` : 'Take this card?'}</span>
+          <button type="button" disabled={busy} data-confirm-draw onclick={confirmPendingDraw}>Confirm</button>
+          <button type="button" disabled={busy} data-abandon-draw onclick={abandonPendingDraw}>Undo</button>
+        </div>
+      {/if}
       <div class="market-cards">
         {#each lobby.round.market as card, marketIndex (marketIndex)}
           {@const activeUid = lobby.round.activeUid}
           {@const loadedReturnId = exchangeLoads(activeUid)[card.id]}
           <div class="table-market-slot" data-market-slot-index={marketIndex}>
+            {#if isPendingDrawCard(card.id)}
+              <button
+                type="button"
+                class="market-card pending-draw-card"
+                disabled={busy}
+                aria-label="Confirm draw"
+                data-market-card-id={card.id}
+                data-pending-draw-card={card.id}
+                onclick={confirmPendingDraw}
+              >
+                <PieceArt kind="card-back" label="Facedown card" />
+              </button>
+            {:else}
             <button
               type="button"
               class="market-card"
               class:camel={card.kind === 'camel'}
               class:arriving={arrivingCardIds.includes(card.id)}
-              disabled={busy || (card.kind !== 'camel' && (lobby.round.hands[activeUid]?.length ?? 0) >= 7)}
+              disabled={busy || Boolean(pendingDraw) || (card.kind !== 'camel' && (lobby.round.hands[activeUid]?.length ?? 0) >= 7)}
               aria-label={card.kind === 'camel' ? `Take all ${lobby.round.market.filter(({ kind }) => kind === 'camel').length} camels` : `Take ${label(card.kind)} ${card.id}`}
               data-market-card-id={card.id}
               data-card-arriving={arrivingCardIds.includes(card.id) || undefined}
@@ -684,12 +732,13 @@
             >
               <PieceArt kind={card.kind} label={label(card.kind)} detail={card.id} />
             </button>
+            {/if}
             {#if card.kind !== 'camel'}
               <button
                 type="button"
                 class="table-exchange-target"
                 class:loaded={Boolean(loadedReturnId)}
-                disabled={busy || (!loadedReturnId && selectedReturnIds(activeUid).length === 0)}
+                disabled={busy || Boolean(pendingDraw) || (!loadedReturnId && selectedReturnIds(activeUid).length === 0)}
                 aria-pressed={Boolean(loadedReturnId)}
                 aria-label={loadedReturnId
                   ? `Return the face-down card below ${label(card.kind)} to the phone selection`
@@ -918,6 +967,7 @@
   .player-seat > footer { display: flex; min-height: 2rem; align-items: center; justify-content: center; gap: 0.45rem; font-size: clamp(0.62rem, 1.2vmin, 0.78rem); text-align: center; }
   .player-seat footer button, .round-result button { min-height: 36px; padding: 0.3rem 0.65rem; border: 0; border-radius: 99rem; background: #a6442d; color: white; font-weight: 700; }
   .shared-market {
+    position: relative;
     grid-column: 1;
     grid-row: 2;
     display: grid;
@@ -943,6 +993,30 @@
   .market-cards { display: flex; min-height: 0; align-items: center; justify-content: center; gap: clamp(0.35rem, 1.6vw, 1.4rem); }
   .table-market-slot { display: grid; min-width: 0; place-items: center; gap: clamp(0.2rem, 0.7vh, 0.4rem); }
   .market-card { width: clamp(4.4rem, 15vh, 8.5rem); height: clamp(4.4rem, 15vh, 8.5rem); }
+  .draw-confirmation {
+    position: absolute;
+    z-index: 12;
+    top: clamp(0.35rem, 1vmin, 0.7rem);
+    left: 50%;
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.3rem 0.45rem 0.3rem 0.65rem;
+    border: 2px solid #d38b21;
+    border-radius: 99rem;
+    background: #fff4d6;
+    box-shadow: 0 0.3rem 0.7rem rgb(10 32 30 / 24%);
+    font-weight: 700;
+    transform: translateX(-50%);
+  }
+  .draw-confirmation button { min-height: 36px; border-radius: 99rem; }
+  .draw-pending .table-exchange-target { visibility: hidden; }
+  .pending-draw-card :global(.piece-image) { animation: pending-draw-turn 220ms ease-out both; transform-origin: center; }
+  @keyframes pending-draw-turn {
+    from { opacity: 0.45; transform: rotateY(80deg); }
+    to { opacity: 1; transform: rotateY(0); }
+  }
   .market-card.camel { border-color: #a6442d; }
   .table-exchange-target { display: grid; width: clamp(4.4rem, 15vh, 8.5rem); min-height: clamp(2.7rem, 6.5vh, 4rem); grid-template-columns: auto 1fr; place-items: center; gap: 0.2rem; padding: 0.2rem; border: 2px dashed #315f58; border-radius: 0.6rem; background: rgb(255 250 240 / 72%); color: #315f58; font-weight: 700; }
   .table-exchange-target:disabled { opacity: 0.48; }
