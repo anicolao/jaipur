@@ -23,6 +23,15 @@ test('the active trader takes one good and refills the market', async ({ browser
 
   const observerFlights = rival.locator('.action-card-flight');
   await expect(observerFlights).toHaveCount(2);
+  const arrivingMarketCard = rival.locator('.market [data-card-arriving="true"]');
+  await expect(arrivingMarketCard).toHaveCount(1);
+  await expect(arrivingMarketCard).toHaveCSS('visibility', 'hidden');
+  await expect(rival.locator('.action-card-flight.flips')).toHaveCount(1);
+  await expect(rival.locator('.action-card-flight-front')).toHaveCount(1);
+  await expect(rival.locator('.action-card-flight.flips .action-card-flight-back')).toHaveAttribute(
+    'src',
+    /card-back\.webp$/
+  );
   await observerFlights.evaluateAll((flights) => {
     for (const flight of flights) flight.getAnimations()[0]?.pause();
   });
@@ -43,6 +52,7 @@ test('the active trader takes one good and refills the market', async ({ browser
     for (const flight of flights) flight.getAnimations()[0]?.finish();
   });
   await expect(observerFlights).toHaveCount(0);
+  await expect(rival.locator('.market [data-card-arriving="true"]')).toHaveCount(0);
 
   await steps.step('good-taken', {
     description: 'One good moves into Asha’s hand',

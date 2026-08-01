@@ -103,8 +103,14 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   const publicTake = page.locator('.market-card:not(.camel):not(:disabled)').first();
   await publicTake.click();
   await expect(page.locator('.table-card-flight').first()).toBeVisible();
+  await expect(page.locator('.table-card-flight.flips')).toHaveCount(1);
+  await expect(page.locator('.table-card-flight-front')).toHaveCount(1);
+  const arrivingTableCard = page.locator('.market-card[data-card-arriving="true"]');
+  await expect(arrivingTableCard).toHaveCount(1);
+  await expect(arrivingTableCard).toHaveCSS('visibility', 'hidden');
   await expect(page.locator('[data-seat="1"] .turn-state')).toHaveText('Your turn');
   await expect(page.locator('.table-card-flight, .table-token-flight')).toHaveCount(0, { timeout: 3000 });
+  await expect(page.locator('.market-card[data-card-arriving="true"]')).toHaveCount(0);
 
   const saleCard = firstPhone.getByRole('button', {
     name: /^Select (Cloth|Spice|Leather) /

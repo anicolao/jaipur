@@ -42,7 +42,10 @@
   let knownActivityIds = new Set<string>();
   let cardFlights = $state<Array<{
     key: number;
+    cardId?: string;
     image: string;
+    revealImage?: string;
+    concealsDestination: boolean;
     startLeft: number;
     startTop: number;
     startSize: number;
@@ -52,6 +55,7 @@
     delay: number;
   }>>([]);
   let flightSequence = 0;
+  let arrivingCardIds = $state<string[]>([]);
   let tokenFlights = $state<Array<{
     key: number;
     token: Token;
@@ -318,15 +322,24 @@
     source: DOMRect | undefined,
     destination: DOMRect | undefined,
     image: string,
-    delay = 0
+    delay = 0,
+    cardId?: string,
+    revealImage?: string,
+    concealsDestination = false
   ) {
-    if (!source || !destination) return;
+    if (!source || !destination) {
+      if (cardId) arrivingCardIds = arrivingCardIds.filter((id) => id !== cardId);
+      return;
+    }
     const startSize = Math.min(source.width, source.height);
     const endSize = Math.min(destination.width, destination.height, startSize);
     const key = ++flightSequence;
     cardFlights = [...cardFlights, {
       key,
+      cardId,
       image,
+      revealImage,
+      concealsDestination,
       startLeft: source.left + (source.width - startSize) / 2,
       startTop: source.top + (source.height - startSize) / 2,
       startSize,
@@ -335,7 +348,15 @@
       endSize,
       delay
     }];
-    setTimeout(() => cardFlights = cardFlights.filter((flight) => flight.key !== key), 900 + delay);
+    setTimeout(() => finishCardFlight(key), 1400 + delay);
+  }
+
+  function finishCardFlight(key: number) {
+    const finished = cardFlights.find((flight) => flight.key === key);
+    cardFlights = cardFlights.filter((flight) => flight.key !== key);
+    if (finished?.concealsDestination && finished.cardId) {
+      arrivingCardIds = arrivingCardIds.filter((cardId) => cardId !== finished.cardId);
+    }
   }
 
   function startIntentFlight(uid: string, returnCardId: string, marketCardId: string) {
@@ -344,7 +365,16 @@
       ? box(`[data-table-hand-card="${CSS.escape(returnCardId)}"]`)
       : box(`[data-table-herd="${CSS.escape(uid)}"] img:last-child`);
     const destination = box(`[data-table-exchange-target="${CSS.escape(marketCardId)}"]`);
-    cardFlight(source, destination, componentImage('card-back'));
+    arrivingCardIds = [...new Set([...arrivingCardIds, returnCardId])];
+    cardFlight(
+      source,
+      destination,
+      componentImage('card-back'),
+      0,
+      returnCardId,
+      undefined,
+      true
+    );
   }
 
   async function animateActivities(
@@ -353,9 +383,12 @@
     next: GameState
   ) {
     const movements: Array<{
+      cardId: string;
       source: DOMRect | undefined;
       destinationSelector: string;
       image: string;
+      revealImage?: string;
+      concealDestination: boolean;
       delay: number;
     }> = [];
     const tokenMovements: Array<{
@@ -371,38 +404,49 @@
         activity.cardIds?.forEach((cardId, index) => {
           const kind = activity.cardKinds?.[index] as Good | 'camel' | undefined;
           movements.push({
+            cardId,
             source: box(`[data-market-card-id="${CSS.escape(cardId)}"]`),
             destinationSelector: kind === 'camel'
               ? `[data-table-herd="${CSS.escape(uid)}"]`
               : `[data-table-hand="${CSS.escape(uid)}"]`,
             image: componentImage(kind ?? 'card-back'),
+            concealDestination: true,
             delay: index * 70
           });
         });
       }
       if (activity.type === 'cards/exchanged') {
         activity.cardIds?.forEach((cardId, index) => movements.push({
+          cardId,
           source: box(`[data-market-card-id="${CSS.escape(cardId)}"]`),
           destinationSelector: `[data-table-hand="${CSS.escape(uid)}"]`,
           image: componentImage((activity.cardKinds?.[index] as Good) ?? 'card-back'),
+          concealDestination: true,
           delay: index * 70
         }));
         const previousLoads = previous.tabletopIntents[uid]?.exchangeLoads ?? {};
         activity.returnedCardIds?.forEach((cardId, index) => {
           const targetId = Object.entries(previousLoads).find(([, returnId]) => returnId === cardId)?.[0];
           movements.push({
+            cardId,
             source: targetId ? box(`[data-table-exchange-target="${CSS.escape(targetId)}"]`) : undefined,
             destinationSelector: `[data-market-card-id="${CSS.escape(cardId)}"]`,
             image: componentImage('card-back'),
+            revealImage: componentImage(
+              (activity.returnedCardKinds?.[index] as Good | 'camel' | undefined) ?? 'card-back'
+            ),
+            concealDestination: true,
             delay: index * 70
           });
         });
       }
       if (activity.type === 'cards/sold') {
         activity.cardIds?.forEach((cardId, index) => movements.push({
+          cardId,
           source: box(`[data-table-hand-card="${CSS.escape(cardId)}"]`),
           destinationSelector: `.token-rail`,
           image: componentImage('card-back'),
+          concealDestination: false,
           delay: index * 55
         }));
         const oldTokens = new Set([
@@ -430,15 +474,30 @@
       ({ id }) => !previousMarketIds.has(id) && !returnedIds.has(id)
     ) ?? [];
     refills.forEach((card, index) => movements.push({
+      cardId: card.id,
       source: box('.deck'),
       destinationSelector: `[data-market-card-id="${CSS.escape(card.id)}"]`,
       image: componentImage('card-back'),
+      revealImage: componentImage(card.kind),
+      concealDestination: true,
       delay: 120 + index * 70
     }));
 
+    arrivingCardIds = [...new Set([
+      ...arrivingCardIds,
+      ...movements.filter(({ concealDestination }) => concealDestination).map(({ cardId }) => cardId)
+    ])];
     await tick();
-    movements.forEach(({ source, destinationSelector, image, delay }) =>
-      cardFlight(source, box(destinationSelector), image, delay)
+    movements.forEach(({ cardId, source, destinationSelector, image, revealImage, concealDestination, delay }) =>
+      cardFlight(
+        source,
+        box(destinationSelector),
+        image,
+        delay,
+        cardId,
+        revealImage,
+        concealDestination
+      )
     );
     tokenMovements.forEach(({ source, destinationSelector, token, delay }) => {
       const destination = box(destinationSelector);
@@ -508,9 +567,11 @@
       >
         {#each lobby.round?.hands[player.uid] ?? [] as card}
           <img
+            class:arriving={arrivingCardIds.includes(card.id)}
             src={componentImage('card-back')}
             alt=""
             data-table-hand-card={card.id}
+            data-card-arriving={arrivingCardIds.includes(card.id) || undefined}
             draggable="false"
           />
         {/each}
@@ -523,7 +584,14 @@
       >
         <span class="herd-pile" aria-hidden="true">
           {#each (lobby.round?.herds[player.uid] ?? []).slice(-5) as camel, index}
-            <img src={componentImage('camel')} alt="" style={`--pile-index:${index}`} />
+            <img
+              class:arriving={arrivingCardIds.includes(camel.id)}
+              src={componentImage('camel')}
+              alt=""
+              data-table-herd-card={camel.id}
+              data-card-arriving={arrivingCardIds.includes(camel.id) || undefined}
+              style={`--pile-index:${index}`}
+            />
           {/each}
         </span>
         <span>Herd</span>
@@ -602,9 +670,11 @@
               type="button"
               class="market-card"
               class:camel={card.kind === 'camel'}
+              class:arriving={arrivingCardIds.includes(card.id)}
               disabled={busy || (card.kind !== 'camel' && (lobby.round.hands[activeUid]?.length ?? 0) >= 7)}
               aria-label={card.kind === 'camel' ? `Take all ${lobby.round.market.filter(({ kind }) => kind === 'camel').length} camels` : `Take ${label(card.kind)} ${card.id}`}
               data-market-card-id={card.id}
+              data-card-arriving={arrivingCardIds.includes(card.id) || undefined}
               onclick={() => chooseMarket(card)}
             >
               <PieceArt kind={card.kind} label={label(card.kind)} detail={card.id} />
@@ -623,7 +693,13 @@
                 onclick={() => chooseExchangeTarget(activeUid, card.id)}
               >
                 {#if loadedReturnId}
-                  <img src={componentImage('card-back')} alt="" data-loaded-return={loadedReturnId} />
+                  <img
+                    class:arriving={arrivingCardIds.includes(loadedReturnId)}
+                    src={componentImage('card-back')}
+                    alt=""
+                    data-loaded-return={loadedReturnId}
+                    data-card-arriving={arrivingCardIds.includes(loadedReturnId) || undefined}
+                  />
                 {:else}
                   <span aria-hidden="true">＋</span>
                   <small>Return</small>
@@ -699,9 +775,20 @@
   {#each cardFlights as flight (flight.key)}
     <span
       class="table-card-flight"
+      class:flips={Boolean(flight.revealImage)}
       aria-hidden="true"
       style={`--start-left:${flight.startLeft}px;--start-top:${flight.startTop}px;--start-size:${flight.startSize}px;--end-left:${flight.endLeft}px;--end-top:${flight.endTop}px;--end-size:${flight.endSize}px;--flight-delay:${flight.delay}ms`}
-    ><img src={flight.image} alt="" /></span>
+      onanimationend={(event) => {
+        if (event.currentTarget === event.target) finishCardFlight(flight.key);
+      }}
+    >
+      <span class="table-card-flight-inner">
+        <img class="table-card-flight-back" src={flight.image} alt="" />
+        {#if flight.revealImage}
+          <img class="table-card-flight-front" src={flight.revealImage} alt="" />
+        {/if}
+      </span>
+    </span>
   {/each}
   {#each tokenFlights as flight (flight.key)}
     <span
@@ -725,6 +812,7 @@
     color: #183a37;
     font-family: 'Atkinson Hyperlegible', sans-serif;
   }
+  .arriving { visibility: hidden !important; }
   button, summary { font: inherit; }
   button:focus-visible, summary:focus-visible { outline: 3px solid #d38b21; outline-offset: 2px; }
   .tabletop {
@@ -882,12 +970,22 @@
   .corner-log.inverted ol { top: calc(100% + 0.35rem); right: auto; bottom: auto; left: 0; }
   .corner-log li { padding: 0.22rem 0.3rem; border-radius: 0.25rem; background: #f2e8d3; font-size: 0.68rem; }
   .corner-log li + li { margin-top: 0.18rem; }
-  .table-card-flight, .table-token-flight { position: fixed; z-index: 40; top: var(--start-top); left: var(--start-left); width: var(--start-size); height: var(--start-size); pointer-events: none; animation: table-flight 760ms cubic-bezier(0.2, 0.75, 0.22, 1) var(--flight-delay) both; }
-  .table-card-flight img { width: 100%; height: 100%; border: 2px solid #315f58; border-radius: 0.55rem; box-shadow: 0 0.7rem 1rem rgb(0 0 0 / 28%); object-fit: cover; }
+  .table-card-flight, .table-token-flight { position: fixed; z-index: 40; top: var(--start-top); left: var(--start-left); width: var(--start-size); height: var(--start-size); pointer-events: none; animation: table-flight 860ms cubic-bezier(0.2, 0.75, 0.22, 1) var(--flight-delay) both; }
+  .table-card-flight { perspective: 900px; }
+  .table-card-flight-inner { position: absolute; inset: 0; display: block; transform-style: preserve-3d; }
+  .table-card-flight.flips .table-card-flight-inner { animation: table-card-flip 860ms ease-in-out var(--flight-delay) both; }
+  .table-card-flight img { position: absolute; width: 100%; height: 100%; inset: 0; backface-visibility: hidden; border: 2px solid #315f58; border-radius: 0.55rem; box-shadow: 0 0.7rem 1rem rgb(0 0 0 / 28%); object-fit: cover; }
+  .table-card-flight-front { transform: rotateY(180deg); }
   .table-token-flight :global(.token-chip) { width: 100%; height: 100%; filter: drop-shadow(0 0.5rem 0.5rem rgb(0 0 0 / 28%)); }
   @keyframes table-flight {
     0% { opacity: 0.96; transform: translate(0, 0) rotate(-3deg); }
-    100% { width: var(--end-size); height: var(--end-size); opacity: 1; transform: translate(calc(var(--end-left) - var(--start-left)), calc(var(--end-top) - var(--start-top))) rotate(0); }
+    68% { width: var(--end-size); height: var(--end-size); opacity: 1; transform: translate(calc(var(--end-left) - var(--start-left)), calc(var(--end-top) - var(--start-top))) rotate(-2deg) scale(1.05); }
+    84% { width: var(--end-size); height: var(--end-size); opacity: 1; transform: translate(calc(var(--end-left) - var(--start-left)), calc(var(--end-top) - var(--start-top))) rotate(1deg) scale(0.97); }
+    100% { width: var(--end-size); height: var(--end-size); opacity: 1; transform: translate(calc(var(--end-left) - var(--start-left)), calc(var(--end-top) - var(--start-top))) rotate(0) scale(1); }
+  }
+  @keyframes table-card-flip {
+    0%, 52% { transform: rotateY(0deg); }
+    78%, 100% { transform: rotateY(180deg); }
   }
   .table-status { position: fixed; z-index: 15; right: calc(var(--rail-width) + 1rem); bottom: 0.4rem; margin: 0; color: #315f58; font-size: 0.65rem; font-weight: 700; }
   .table-status[data-status='error'] { color: #a3212a; }
