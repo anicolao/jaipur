@@ -63,6 +63,7 @@ test('offline replay converges and malformed stream entries stay deterministic',
 
   await rivalContext.setOffline(true);
   await page.locator('.market button').first().click();
+  await page.locator('[data-confirm-draw]').click();
   await expect(page.getByText("Belen's turn")).toBeVisible();
   await expect(rival.getByText("Asha's turn")).toBeVisible();
 

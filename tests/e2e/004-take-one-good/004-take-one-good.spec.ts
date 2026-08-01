@@ -25,6 +25,23 @@ test('the active trader takes one good and refills the market', async ({ browser
   const targetSlot = Number(await target.locator('..').getAttribute('data-market-slot-index'));
   await target.click();
 
+  await expect(page.locator('[data-pending-draw="one"]')).toBeVisible();
+  await expect(page.locator(`[data-pending-draw-card="${cardId}"]`)).toBeVisible();
+  await expect(page.locator(`[data-pending-draw-card="${cardId}"] .piece-label`)).toHaveText('Facedown card');
+  await expect(page.locator('.hand [data-card-id]')).toHaveCount(handBefore);
+  await expect(page.getByText('Deck').locator('..')).toContainText(String(deckBefore));
+  await expect(page.getByText("Asha's turn")).toBeVisible();
+  await expect(rival.locator('.action-card-flight')).toHaveCount(0);
+
+  await page.locator('[data-abandon-draw]').click();
+  await expect(page.locator('[data-pending-draw]')).toHaveCount(0);
+  await expect(page.locator(`.market [data-card-id="${cardId}"] .piece-label`)).not.toHaveText('Facedown card');
+  await expect(page.locator('.hand [data-card-id]')).toHaveCount(handBefore);
+  await expect(page.getByText('Deck').locator('..')).toContainText(String(deckBefore));
+
+  await page.locator(`.market .card-action[data-card-id="${cardId}"]`).click();
+  await page.locator('[data-confirm-draw]').click();
+
   const observerFlights = rival.locator('.action-card-flight');
   await expect(observerFlights).toHaveCount(2);
   const arrivingMarketCard = rival.locator('.market [data-card-arriving="true"]');

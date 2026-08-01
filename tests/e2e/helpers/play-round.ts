@@ -49,12 +49,14 @@ export async function playRoundToCompletion(
       const camels = active.getByRole('button', { name: /^Take all \d+ camels$/ });
       if (await camels.count()) {
         await camels.first().click();
+        await active.locator('[data-confirm-draw]').click();
       } else {
         const marketGood = active.locator('.market .card-action:not(.camel)').first();
         if (!(await marketGood.count())) {
           throw new Error(`No legal ordinary UI action found on action ${action + 1}`);
         }
         await marketGood.click();
+        await active.locator('[data-confirm-draw]').click();
       }
     }
     active = active === host ? rival : host;

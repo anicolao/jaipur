@@ -77,15 +77,20 @@ test('ready traders receive a deterministic private deal', async ({ browser, pag
 
   for (let draw = 0; draw < 2; draw += 1) {
     await page.locator('.market button.card-action:not(.camel):not(:disabled)').first().click();
+    await page.locator('[data-confirm-draw]').click();
     await expect(rival.getByText("Belen's turn")).toBeVisible();
     await rival.locator('.market button.card-action:not(.camel):not(:disabled)').first().click();
+    await rival.locator('[data-confirm-draw]').click();
     await expect(page.getByText("Asha's turn")).toBeVisible();
   }
   await page.getByRole('button', { name: 'Take all 5 camels' }).first().click();
+  await page.locator('[data-confirm-draw]').click();
   await expect(rival.getByText("Belen's turn")).toBeVisible();
   await rival.locator('.market button.card-action:not(.camel):not(:disabled)').first().click();
+  await rival.locator('[data-confirm-draw]').click();
   await expect(page.getByText("Asha's turn")).toBeVisible();
   await page.locator('.market button.card-action:not(.camel):not(:disabled)').first().click();
+  await page.locator('[data-confirm-draw]').click();
   await expect(rival.getByText("Belen's turn")).toBeVisible();
 
   await steps.step('opponent-at-card-limit', {
