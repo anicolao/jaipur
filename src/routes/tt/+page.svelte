@@ -6,6 +6,7 @@
   import { onMount, tick } from 'svelte';
   import QRCode from 'qrcode';
   import PieceArt from '$lib/PieceArt.svelte';
+  import GameSummary from '$lib/GameSummary.svelte';
   import TokenChip from '$lib/TokenChip.svelte';
   import TokenStack from '$lib/TokenStack.svelte';
   import { initializeFirebase } from '$lib/firebase';
@@ -714,16 +715,12 @@
         {/each}
       </div>
     {:else if lobby.round?.status === 'complete'}
-      <section class="round-result">
-        <img src={componentImage('seal')} alt="" />
-        <div>
-          <span>{lobby.winnerUid ? 'Match complete' : `Round ${lobby.round.number} complete`}</span>
-          <h2>{playerName(lobby.winnerUid ?? lobby.round.winnerUid ?? '')} wins</h2>
-        </div>
-        <button type="button" onclick={lobby.winnerUid ? rematch : nextRound}>
-          {lobby.winnerUid ? 'Start rematch' : `Open round ${lobby.round.number + 1}`}
-        </button>
-      </section>
+      <GameSummary
+        {lobby}
+        componentImage={componentImage}
+        onNextRound={lobby.winnerUid ? undefined : nextRound}
+        onRematch={lobby.winnerUid ? rematch : undefined}
+      />
     {:else}
       <div class="tabletop-mark">
         <img src={componentImage('card-back')} alt="" />
@@ -953,8 +950,6 @@
   .table-exchange-target > span { font-size: 1.2rem; }
   .table-exchange-target small { font-size: clamp(0.55rem, 1.1vmin, 0.72rem); }
   .table-exchange-target img { width: clamp(2.25rem, 5.7vh, 3.4rem); height: clamp(2.25rem, 5.7vh, 3.4rem); border: 1px solid #315f58; border-radius: 0.35rem; object-fit: cover; }
-  .round-result { display: flex; align-items: center; justify-content: center; gap: 1rem; text-align: center; }
-  .round-result > img { width: clamp(3.5rem, 10vh, 6rem); }
   .tabletop-mark { display: grid; place-content: center; place-items: center; gap: 0.25rem; }
   .tabletop-mark img { width: clamp(3rem, 9vh, 5rem); border-radius: 0.55rem; }
   .tabletop-mark strong { font-size: clamp(1.4rem, 4vmin, 2.5rem); letter-spacing: 0.2em; }

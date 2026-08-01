@@ -12,6 +12,7 @@
     type GameRepository
   } from '$lib/game-repository';
   import PieceArt from '$lib/PieceArt.svelte';
+  import GameSummary from '$lib/GameSummary.svelte';
   import TokenChip from '$lib/TokenChip.svelte';
   import TokenStack from '$lib/TokenStack.svelte';
   import {
@@ -1239,98 +1240,14 @@
         {/if}
       </section>
     {:else if lobby.round.status === 'complete'}
-      <section class="score-review" aria-labelledby="round-result">
-        <img class="result-seal" src={componentImage('seal')} alt="" />
-        {#if lobby.winnerUid}
-          <p class="eyebrow">Match complete</p>
-          <h2 id="round-result" class="match-winner">
-            {lobby.players.find((player) => player.uid === lobby.winnerUid)?.displayName}
-            wins Jaipur
-          </h2>
-          <p>Two Seals of Excellence decide the match.</p>
-        {:else}
-          <p class="eyebrow">Round {lobby.round.number} complete</p>
-          <h2 id="round-result">
-            {lobby.players.find((player) => player.uid === lobby.round?.winnerUid)?.displayName}
-            earns a Seal of Excellence
-          </h2>
-          <p>
-            {lobby.round.endReason === 'three-empty-supplies'
-              ? 'Three goods supplies are empty.'
-              : 'The deck could not completely refill the market.'}
-          </p>
-        {/if}
-        <div class="scorecards">
-          {#each lobby.players as player}
-            <article class:winner={player.uid === lobby.round.winnerUid}>
-              <h3>{player.displayName}</h3>
-              <dl>
-                <div><dt>Goods</dt><dd>{lobby.round.scores?.[player.uid]?.goods ?? 0}</dd></div>
-                <div><dt>Bonuses</dt><dd>{lobby.round.scores?.[player.uid]?.bonus ?? 0}</dd></div>
-                <div><dt>Camels</dt><dd>{lobby.round.scores?.[player.uid]?.camel ?? 0}</dd></div>
-                <div><dt>Total</dt><dd>{lobby.round.scores?.[player.uid]?.total ?? 0}</dd></div>
-              </dl>
-              <div class="score-components">
-                <span class="bonus-stack">
-                  <span class="component-caption">Bonus tokens:</span>
-                  {#each lobby.round.ownedBonusTokens[player.uid] ?? [] as token}
-                    <span class="bonus-token">
-                      <img src={componentImage('card-back')} alt="" />
-                      <strong>{token.value}</strong>
-                    </span>
-                  {:else}
-                    <span>none</span>
-                  {/each}
-                </span>
-                <span class="camel-total">
-                  <img src={componentImage('camel')} alt="" />
-                  Herd: {lobby.round.herds[player.uid]?.length ?? 0} camels
-                </span>
-                <span class="score-seals">
-                  {#each Array(2) as _, sealIndex}
-                    <img
-                      class:earned={sealIndex < (lobby.seals[player.uid] ?? 0)}
-                      src={componentImage('seal')}
-                      alt=""
-                    />
-                  {/each}
-                  <strong>{lobby.seals[player.uid] ?? 0} / 2 seals</strong>
-                </span>
-              </div>
-            </article>
-          {/each}
-        </div>
-        {#if lobby.winnerUid}
-          <section class="match-history" aria-label="Round history">
-            <h3>Round history</h3>
-            {#each lobby.rounds as completedRound}
-              <p>
-                Round {completedRound.number}:
-                <strong>
-                  {lobby.players.find((player) => player.uid === completedRound.winnerUid)?.displayName}
-                </strong>
-                {lobby.players
-                  .map(
-                    (player) =>
-                      `${player.displayName} ${completedRound.scores?.[player.uid]?.total ?? 0}`
-                  )
-                  .join(' · ')}
-              </p>
-            {/each}
-          </section>
-          {#if lobby.hostUid === uid}
-            <button type="button" disabled={busy || status === 'offline'} onclick={startRematch}>Start rematch</button>
-          {:else}
-            <p>Waiting for the host to start a rematch…</p>
-          {/if}
-        {:else if lobby.hostUid === uid}
-          <button type="button" disabled={busy || status === 'offline'} onclick={startRound}>
-            Open round {lobby.round.number + 1}
-          </button>
-        {:else}
-          <p>Waiting for the host to open the next market…</p>
-        {/if}
-      </section>
+      <GameSummary
+        {lobby}
+        componentImage={componentImage}
+        busy={busy}
+        offline={status === 'offline'}
+        onNextRound={lobby.hostUid === uid ? startRound : undefined}
+        onRematch={lobby.hostUid === uid ? startRematch : undefined}
+      />
     {:else}
       <section class="table" aria-label="Jaipur market">
         <header aria-live="polite" aria-atomic="true">
@@ -2313,35 +2230,6 @@
   }
   .token span { font-size: 0.72rem; }
   .own-token-tray { margin: 0.65rem 0 0; }
-  .score-review > h2 {
-    margin: 0.5rem auto 1rem;
-    font: 700 2.4rem 'Cormorant Garamond', serif;
-  }
-  .scorecards {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1rem;
-    margin: 1.25rem 0;
-    text-align: left;
-  }
-  .scorecards article {
-    padding: 1rem;
-    border: 2px solid #b7aa8d;
-    border-radius: 0.8rem;
-    background: #fffaf0;
-  }
-  .scorecards article.winner { border-color: #a23e2a; background: #fff0dd; }
-  .scorecards h3 { margin: 0 0 0.65rem; font-size: 1.25rem; }
-  .scorecards dl { margin: 0; }
-  .scorecards dl div { display: flex; justify-content: space-between; }
-  .scorecards dd { margin: 0; font-weight: 700; }
-  .match-history {
-    margin: 0 0 1.25rem;
-    padding: 0.8rem;
-    border-radius: 0.8rem;
-    background: #e9dcc1;
-  }
-  .match-history h3, .match-history p { margin: 0.25rem; }
   @media (prefers-reduced-motion: reduce) {
     :global(*) {
       scroll-behavior: auto !important;
@@ -2576,8 +2464,7 @@
     opacity: 0.25;
     object-fit: cover;
   }
-  .seal-pips img.earned,
-  .score-seals img.earned {
+  .seal-pips img.earned {
     filter: none;
     opacity: 1;
   }
@@ -3246,110 +3133,6 @@
     background: #fffaf0;
   }
 
-  .score-review {
-    display: grid;
-    width: min(54rem, 100%);
-    flex: 1;
-    min-height: 0;
-    grid-template-columns: auto 1fr;
-    grid-auto-rows: min-content;
-    align-content: center;
-    margin: auto;
-    column-gap: 0.65rem;
-  }
-  .result-seal {
-    width: clamp(3.2rem, 9vmin, 5.5rem);
-    height: clamp(3.2rem, 9vmin, 5.5rem);
-    grid-row: 1 / 4;
-    border-radius: 50%;
-    object-fit: cover;
-  }
-  .score-review > .eyebrow,
-  .score-review > h2,
-  .score-review > p {
-    grid-column: 2;
-    margin: 0.1rem 0;
-  }
-  .score-review > h2 {
-    font-size: clamp(1.5rem, 4vmin, 2.4rem);
-  }
-  .scorecards {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.5rem;
-    margin: 0.55rem 0;
-  }
-  .scorecards article {
-    padding: 0.55rem;
-  }
-  .scorecards h3 {
-    margin-bottom: 0.25rem;
-  }
-  .scorecards dl {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0 0.8rem;
-    font-size: 0.78rem;
-  }
-  .score-components {
-    display: flex;
-    min-height: 2.25rem;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.35rem;
-    margin-top: 0.3rem;
-    font-size: 0.7rem;
-  }
-  .bonus-stack,
-  .camel-total,
-  .score-seals {
-    display: flex;
-    align-items: center;
-    gap: 0.18rem;
-  }
-  .component-caption {
-    font-size: 0.65rem;
-  }
-  .bonus-token {
-    position: relative;
-    display: grid;
-    width: 1.7rem;
-    height: 1.7rem;
-    place-items: center;
-    overflow: hidden;
-    border-radius: 50%;
-    color: white;
-  }
-  .bonus-token img {
-    position: absolute;
-    z-index: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  .bonus-token strong {
-    z-index: 1;
-    text-shadow: 0 1px 2px #000;
-  }
-  .camel-total img {
-    width: 1.8rem;
-    height: 1.8rem;
-    border-radius: 50%;
-    object-fit: cover;
-  }
-  .match-history {
-    grid-column: 1 / -1;
-    margin: 0 0 0.45rem;
-    padding: 0.35rem;
-    font-size: 0.7rem;
-  }
-  .score-review > button,
-  .score-review > section + button,
-  .score-review > section + p {
-    grid-column: 1 / -1;
-    justify-self: center;
-  }
-
   @media (max-width: 600px) and (min-height: 600px) {
     .hero {
       padding: 0.65rem;
@@ -3435,21 +3218,6 @@
     }
     .token-area {
       padding: 0.2rem;
-    }
-    .score-review {
-      align-content: center;
-      padding-top: 0.3rem;
-    }
-    .result-seal {
-      width: 3.2rem;
-      height: 3.2rem;
-    }
-    .scorecards {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .score-components {
-      align-items: flex-start;
-      flex-direction: column;
     }
   }
 
@@ -3635,23 +3403,6 @@
     }
     .camel-herd {
       min-height: 34px;
-    }
-    .score-review {
-      align-content: start;
-    }
-    .result-seal {
-      width: 2.8rem;
-      height: 2.8rem;
-    }
-    .scorecards {
-      margin: 0.25rem 0;
-    }
-    .scorecards article {
-      padding: 0.35rem;
-    }
-    .score-components {
-      min-height: 1.8rem;
-      margin-top: 0.15rem;
     }
   }
 </style>
