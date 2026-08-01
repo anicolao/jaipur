@@ -32,6 +32,8 @@
     sourceBox: DOMRect;
     destinationSelector: string;
     delay: number;
+    concealDestination: boolean;
+    revealKind?: Good | 'camel';
   };
 
   let status = $state<
@@ -79,6 +81,8 @@
     activityId: string;
     cardId: string;
     kind: Good | 'camel' | 'card-back';
+    revealKind?: Good | 'camel';
+    concealsDestination: boolean;
     label: string;
     startLeft: number;
     startTop: number;
@@ -89,6 +93,7 @@
     delay: number;
   }>>([]);
   let actionFlightSequence = 0;
+  let arrivingCardIds = $state<string[]>([]);
   let animatedActivityIds = new Set<string>();
   let actionNotice = $state<{ key: number; text: string } | null>(null);
   let actionNoticeSequence = 0;
@@ -860,10 +865,21 @@
       kind: Good | 'camel' | 'card-back',
       sourceBox: DOMRect | undefined,
       destinationSelector: string,
-      delay: number
+      delay: number,
+      concealDestination = true,
+      revealKind?: Good | 'camel'
     ) => {
       if (sourceBox) {
-        plans.push({ activityId: activity.id, cardId, kind, sourceBox, destinationSelector, delay });
+        plans.push({
+          activityId: activity.id,
+          cardId,
+          kind,
+          sourceBox,
+          destinationSelector,
+          delay,
+          concealDestination,
+          revealKind
+        });
       }
     };
     const cardKinds = activity.cardKinds ?? [];
@@ -890,7 +906,9 @@
           'card-back',
           deckBox,
           `[data-card-id="${CSS.escape(card.id)}"]`,
-          cardIds.length * 90 + 160 + index * 90
+          cardIds.length * 90 + 160 + index * 90,
+          true,
+          card.kind
         );
       });
     }
@@ -908,10 +926,12 @@
       (activity.returnedCardIds ?? []).forEach((cardId, index) => {
         pushPlan(
           cardId,
-          (activity.returnedCardKinds?.[index] ?? 'card-back') as Good | 'camel' | 'card-back',
+          'card-back',
           playerCardSourceBox(previous, activity.actorUid, cardId),
           `[data-card-id="${CSS.escape(cardId)}"]`,
-          cardIds.length * 80 + index * 80
+          cardIds.length * 80 + index * 80,
+          true,
+          activity.returnedCardKinds?.[index] as Good | 'camel' | undefined
         );
       });
     }
@@ -923,7 +943,8 @@
           (cardKinds[index] ?? 'card-back') as Good | 'camel' | 'card-back',
           playerCardSourceBox(previous, activity.actorUid, cardId),
           `[data-token-kind="${CSS.escape(cardKinds[index] ?? '')}"]`,
-          index * 80
+          index * 80,
+          false
         );
       });
     }
@@ -931,11 +952,23 @@
   }
 
   async function startActionCardFlights(plans: ActionMovementPlan[]) {
+    arrivingCardIds = [...new Set([
+      ...arrivingCardIds,
+      ...plans.filter(({ concealDestination }) => concealDestination).map(({ cardId }) => cardId)
+    ])];
     await tick();
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      arrivingCardIds = arrivingCardIds.filter(
+        (cardId) => !plans.some((plan) => plan.concealDestination && plan.cardId === cardId)
+      );
+      return;
+    }
     const flights = plans.flatMap((plan) => {
       const destination = document.querySelector<HTMLElement>(plan.destinationSelector);
-      if (!destination) return [];
+      if (!destination) {
+        arrivingCardIds = arrivingCardIds.filter((cardId) => cardId !== plan.cardId);
+        return [];
+      }
       const destinationBox = destination.getBoundingClientRect();
       const startSize = Math.min(plan.sourceBox.width, plan.sourceBox.height);
       const destinationSize = Math.min(destinationBox.width, destinationBox.height);
@@ -947,6 +980,8 @@
         activityId: plan.activityId,
         cardId: plan.cardId,
         kind: plan.kind,
+        revealKind: plan.revealKind,
+        concealsDestination: plan.concealDestination,
         label: plan.kind === 'card-back' ? '' : cardLabel(plan.kind),
         startLeft: plan.sourceBox.left + (plan.sourceBox.width - startSize) / 2,
         startTop: plan.sourceBox.top + (plan.sourceBox.height - startSize) / 2,
@@ -964,7 +999,11 @@
   }
 
   function finishActionCardFlight(key: number) {
+    const finished = actionCardFlights.find((flight) => flight.key === key);
     actionCardFlights = actionCardFlights.filter((flight) => flight.key !== key);
+    if (finished?.concealsDestination) {
+      arrivingCardIds = arrivingCardIds.filter((cardId) => cardId !== finished.cardId);
+    }
   }
 
   function ownedTokenValue() {
@@ -1378,18 +1417,25 @@
                   <button
                     class="card-action"
                     class:camel={card.kind === 'camel'}
+                    class:arriving={arrivingCardIds.includes(card.id)}
                     type="button"
                     disabled={busy || status === 'offline' || (card.kind !== 'camel' && (lobby.round.hands[uid]?.length ?? 0) >= 7)}
                     aria-label={card.kind === 'camel'
                       ? `Take all ${lobby.round.market.filter(({ kind }) => kind === 'camel').length} camels`
                       : `Take ${cardLabel(card.kind)} ${card.id}`}
                     data-card-id={card.id}
+                    data-card-arriving={arrivingCardIds.includes(card.id) || undefined}
                     onclick={() => card.kind === 'camel' ? takeCamels() : takeOne(card.id)}
                   >
                     <PieceArt kind={card.kind} label={cardLabel(card.kind)} detail={card.id} />
                   </button>
                 {:else}
-                  <article class:camel={card.kind === 'camel'} data-card-id={card.id}>
+                  <article
+                    class:camel={card.kind === 'camel'}
+                    class:arriving={arrivingCardIds.includes(card.id)}
+                    data-card-id={card.id}
+                    data-card-arriving={arrivingCardIds.includes(card.id) || undefined}
+                  >
                     <PieceArt kind={card.kind} label={cardLabel(card.kind)} detail={card.id} />
                   </article>
                 {/if}
@@ -1439,12 +1485,15 @@
             role="img"
             aria-label={`${opponentPlayer()?.displayName ?? 'Opponent'} has ${opponentHandCount()} of 7 cards`}
           >
-            {#each Array(opponentHandCount()) as _, index}
+            {#each lobby.round.hands[opponentUid()] ?? [] as card, index}
               <img
                 class="opponent-card-back"
+                class:arriving={arrivingCardIds.includes(card.id)}
                 src={componentImage('card-back')}
                 alt=""
                 draggable="false"
+                data-card-id={card.id}
+                data-card-arriving={arrivingCardIds.includes(card.id) || undefined}
                 style={`--fan-offset: ${index - (opponentHandCount() - 1) / 2}`}
               />
             {/each}
@@ -1462,9 +1511,12 @@
             <span class="camel-pile" aria-hidden="true">
               {#each lobby.round.herds[opponentUid()] ?? [] as camel, index}
                 <img
+                  class:arriving={arrivingCardIds.includes(camel.id)}
                   src={componentImage('camel')}
                   alt=""
                   draggable="false"
+                  data-card-id={camel.id}
+                  data-card-arriving={arrivingCardIds.includes(camel.id) || undefined}
                   style={camelStackStyle(index)}
                 />
               {/each}
@@ -1506,6 +1558,7 @@
             {#if lobby.round.activeUid === uid}
               <button
                 class="card-action hand-card"
+                class:arriving={arrivingCardIds.includes(card.id)}
                 class:selected={selectedHand.includes(card.id) || exchangeReturnIds().includes(card.id)}
                 class:dragging={draggedReturnId === card.id}
                 type="button"
@@ -1517,6 +1570,7 @@
                     : `${selectedHand.includes(card.id) ? 'Deselect' : 'Select'} ${cardLabel(card.kind)} ${card.id}`}
                 aria-pressed={selectedHand.includes(card.id) || exchangeReturnIds().includes(card.id)}
                 data-card-id={card.id}
+                data-card-arriving={arrivingCardIds.includes(card.id) || undefined}
                 data-return-source={card.id}
                 onpointerdown={(event) => beginReturnPointer(event, card.id, 'hand')}
                 onclick={() => chooseHandCard(card)}
@@ -1524,7 +1578,11 @@
                 <PieceArt kind={card.kind} label={cardLabel(card.kind)} detail={card.id} />
               </button>
             {:else}
-              <article data-card-id={card.id}>
+              <article
+                class:arriving={arrivingCardIds.includes(card.id)}
+                data-card-id={card.id}
+                data-card-arriving={arrivingCardIds.includes(card.id) || undefined}
+              >
                 <PieceArt kind={card.kind} label={cardLabel(card.kind)} detail={card.id} />
               </article>
             {/if}
@@ -1562,6 +1620,9 @@
                     <span
                       class="own-camel-card"
                       class:selected={selectedCamelId === camel.id}
+                      class:arriving={arrivingCardIds.includes(camel.id)}
+                      data-card-id={camel.id}
+                      data-card-arriving={arrivingCardIds.includes(camel.id) || undefined}
                       data-return-source={camel.id}
                       style={ownCamelStackStyle(index)}
                     >
@@ -1585,6 +1646,9 @@
                   {#each lobby.round.herds[uid] ?? [] as camel, index}
                     <span
                       class="own-camel-card"
+                      class:arriving={arrivingCardIds.includes(camel.id)}
+                      data-card-id={camel.id}
+                      data-card-arriving={arrivingCardIds.includes(camel.id) || undefined}
                       style={ownCamelStackStyle(index)}
                     >
                       <PieceArt kind="camel" label="Camel" detail={camel.id} />
@@ -1775,15 +1839,23 @@
   {#each actionCardFlights as flight (flight.key)}
     <span
       class="action-card-flight"
+      class:flips={Boolean(flight.revealKind)}
       data-action-flight-id={flight.activityId}
       data-action-flight-card-id={flight.cardId}
       data-action-flight-kind={flight.kind}
       aria-hidden="true"
       style={`--action-flight-start-left: ${flight.startLeft}px; --action-flight-start-top: ${flight.startTop}px; --action-flight-start-size: ${flight.startSize}px; --action-flight-end-left: ${flight.endLeft}px; --action-flight-end-top: ${flight.endTop}px; --action-flight-end-size: ${flight.endSize}px; --action-flight-delay: ${flight.delay}ms`}
-      onanimationend={() => finishActionCardFlight(flight.key)}
+      onanimationend={(event) => {
+        if (event.currentTarget === event.target) finishActionCardFlight(flight.key);
+      }}
     >
-      <img src={componentImage(flight.kind)} alt="" draggable="false" />
-      {#if flight.label}<span>{flight.label}</span>{/if}
+      <span class="action-card-flight-inner">
+        <img class="action-card-flight-back" src={componentImage(flight.kind)} alt="" draggable="false" />
+        {#if flight.revealKind}
+          <img class="action-card-flight-front" src={componentImage(flight.revealKind)} alt="" draggable="false" />
+        {/if}
+        {#if flight.label}<span>{flight.label}</span>{/if}
+      </span>
     </span>
   {/each}
   {#each tokenFlights as flight (flight.key)}
@@ -1809,6 +1881,7 @@
     font-family: 'Atkinson Hyperlegible', sans-serif;
   }
   :global(body) { margin: 0; }
+  .arriving { visibility: hidden !important; }
   .skip-link {
     position: fixed;
     z-index: 10;
@@ -2922,16 +2995,30 @@
     box-shadow: 0 0.7rem 1.2rem rgb(24 58 55 / 36%);
     color: white;
     pointer-events: none;
-    animation: committed-card-flight 700ms ease-in-out var(--action-flight-delay) both;
+    perspective: 900px;
+    animation: committed-card-flight 820ms cubic-bezier(0.2, 0.75, 0.22, 1) var(--action-flight-delay) both;
+  }
+  .action-card-flight-inner {
+    position: absolute;
+    inset: 0.18rem;
+    display: block;
+    transform-style: preserve-3d;
+  }
+  .action-card-flight.flips .action-card-flight-inner {
+    animation: committed-card-flip 820ms ease-in-out var(--action-flight-delay) both;
   }
   .action-card-flight img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     min-height: 0;
+    backface-visibility: hidden;
     border-radius: 0.35rem;
     object-fit: cover;
   }
-  .action-card-flight > span {
+  .action-card-flight-front { transform: rotateY(180deg); }
+  .action-card-flight-inner > span {
     position: absolute;
     right: 0.18rem;
     bottom: 0.18rem;
@@ -2954,14 +3041,34 @@
       opacity: 1;
       transform: rotate(0deg) scale(1);
     }
+    68% {
+      top: var(--action-flight-end-top);
+      left: var(--action-flight-end-left);
+      width: var(--action-flight-end-size);
+      height: var(--action-flight-end-size);
+      opacity: 1;
+      transform: rotate(-2deg) scale(1.05);
+    }
+    84% {
+      top: var(--action-flight-end-top);
+      left: var(--action-flight-end-left);
+      width: var(--action-flight-end-size);
+      height: var(--action-flight-end-size);
+      opacity: 1;
+      transform: rotate(1deg) scale(0.97);
+    }
     100% {
       top: var(--action-flight-end-top);
       left: var(--action-flight-end-left);
       width: var(--action-flight-end-size);
       height: var(--action-flight-end-size);
-      opacity: 0.96;
-      transform: rotate(5deg) scale(1);
+      opacity: 1;
+      transform: rotate(0) scale(1);
     }
+  }
+  @keyframes committed-card-flip {
+    0%, 52% { transform: rotateY(0deg); }
+    78%, 100% { transform: rotateY(180deg); }
   }
   @keyframes return-card-flight {
     0% {
