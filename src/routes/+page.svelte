@@ -348,6 +348,29 @@
     }
   }
 
+  function pendingRevealEntries() {
+    return Object.entries(lobby.pendingReveals);
+  }
+
+  function isConcealed(cardId: string) {
+    return pendingRevealEntries().some(([, pending]) => pending.cardIds.includes(cardId));
+  }
+
+  async function revealCards(actionId: string, cardIds?: string[]) {
+    if (!repository) return;
+    await repository.append('cards/revealed', { actionId, cardIds: cardIds ?? lobby.pendingReveals[actionId]?.cardIds ?? [] });
+  }
+
+  async function undoTake(actionId: string) {
+    if (!repository) return;
+    await repository.append('cards/undone', { actionId });
+  }
+
+  async function revealCard(cardId: string) {
+    const entry = pendingRevealEntries().find(([, pending]) => pending.cardIds.includes(cardId));
+    if (entry) await revealCards(entry[0], [cardId]);
+  }
+
   function toggleSelection(list: string[], id: string): string[] {
     return list.includes(id) ? list.filter((value) => value !== id) : [...list, id];
   }
@@ -749,7 +772,7 @@
   function activityDescription(activity: GameActivity): string {
     const count = activity.cardIds?.length ?? 0;
     const kinds = activity.cardKinds?.map(cardLabel) ?? [];
-    let description: string;
+    let description = 'updated the game';
     switch (activity.type) {
       case 'game/created':
         description = 'opened the bazaar';
@@ -775,6 +798,12 @@
         break;
       case 'cards/taken-camels':
         description = `took all ${count} ${count === 1 ? 'camel' : 'camels'}`;
+        break;
+      case 'cards/revealed':
+        description = `confirmed ${activity.revealedCardIds?.length ?? 0} new card${(activity.revealedCardIds?.length ?? 0) === 1 ? '' : 's'}`;
+        break;
+      case 'cards/undone':
+        description = 'undid the previous take';
         break;
       case 'cards/exchanged':
         description = `traded ${activity.returnedCardKinds?.map(cardLabel).join(' + ') || `${count} cards`} for ${kinds.join(' + ') || `${count} goods`}`;
@@ -909,8 +938,7 @@
           deckBox,
           `[data-card-id="${CSS.escape(card.id)}"]`,
           cardIds.length * 90 + 160 + index * 90,
-          true,
-          card.kind
+          true
         );
       });
     }
@@ -1315,6 +1343,15 @@
               <button class="secondary" type="button" onclick={resetInteractions}>Clear</button>
             </div>
           {/if}
+          {#if pendingRevealEntries().length > 0}
+            <div class="reveal-controls" data-reveal-controls>
+              <span>New cards are face down.</span>
+              {#each pendingRevealEntries() as [actionId, pending] (actionId)}
+                <button type="button" data-confirm-reveal onclick={() => revealCards(actionId)}>Confirm reveal ({pending.cardIds.length})</button>
+                <button class="secondary" type="button" data-undo-action onclick={() => undoTake(actionId)}>Undo take</button>
+              {/each}
+            </div>
+          {/if}
           <div class="cards market">
             {#each lobby.round.market as card, marketIndex (marketIndex)}
               {@const loadedReturn = exchangeReturnCard(card.id)}
@@ -1324,7 +1361,11 @@
                 class:awaiting={activeExchangeTarget === card.id}
                 data-market-slot-index={marketIndex}
               >
-                {#if lobby.round.activeUid === uid}
+                {#if isConcealed(card.id)}
+                  <button class="card-action concealed" type="button" data-card-id={card.id} data-card-concealed="true" aria-label="Reveal facedown card" onclick={() => revealCard(card.id)}>
+                    <PieceArt kind="card-back" label="Facedown card" />
+                  </button>
+                {:else if lobby.round.activeUid === uid}
                   <button
                     class="card-action"
                     class:camel={card.kind === 'camel'}

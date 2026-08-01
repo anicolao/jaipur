@@ -10,6 +10,8 @@ export type GameEventType =
   | 'round/started'
   | 'cards/taken-one'
   | 'cards/taken-camels'
+  | 'cards/revealed'
+  | 'cards/undone'
   | 'cards/exchanged'
   | 'cards/sold'
   | 'game/rematched';
@@ -47,6 +49,9 @@ export interface GameActivity {
   tokenCount?: number;
   roundWinnerUid?: string;
   gameWinnerUid?: string;
+  actionId?: string;
+  refillCardIds?: string[];
+  revealedCardIds?: string[];
 }
 
 export interface LobbyState {

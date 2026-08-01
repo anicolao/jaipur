@@ -79,8 +79,27 @@ describe('taking one good', () => {
       roundNumber: 1,
       turnNumber: 1,
       cardIds: [card.id],
-      cardKinds: [card.kind]
+      cardKinds: [card.kind],
+      actionId: 'a-4',
+      refillCardIds: [after.round!.market[takenSlot].id]
     });
+    expect(after.pendingReveals['a-4'].cardIds).toEqual([after.round!.market[takenSlot].id]);
+
+    const confirmed = reduceGame([
+      ...setupEvents,
+      base('a-4', 'cards/taken-one', 'a', { cardId: card.id }),
+      base('b-4', 'cards/revealed', 'a', { actionId: 'a-4', cardIds: [after.round!.market[takenSlot].id] })
+    ]);
+    expect(confirmed.pendingReveals).toEqual({});
+
+    const undone = reduceGame([
+      ...setupEvents,
+      base('a-4', 'cards/taken-one', 'a', { cardId: card.id }),
+      base('a-5', 'cards/undone', 'a', { actionId: 'a-4' })
+    ]);
+    expect(undone.round?.activeUid).toBe('a');
+    expect(undone.round?.hands.a).not.toContainEqual(card);
+    expect(undone.round?.market.map(({ id }) => id)).toEqual(marketBefore);
   });
 
   it('accepts a tabletop-hosted action on behalf of the active seat', () => {

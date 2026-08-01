@@ -159,6 +159,8 @@
       case 'round/started': return `opened round ${activity.roundNumber ?? ''}`;
       case 'cards/taken-one': return `took ${kinds[0] ?? 'a good'}`;
       case 'cards/taken-camels': return `took all ${count} ${count === 1 ? 'camel' : 'camels'}`;
+      case 'cards/revealed': return `confirmed ${activity.revealedCardIds?.length ?? 0} new cards`;
+      case 'cards/undone': return 'undid the previous take';
       case 'cards/exchanged': return `traded ${count} for ${count}`;
       case 'cards/sold': return `sold ${count} ${kinds[0] ?? 'goods'}${activity.tokenCount ? ` · ${activity.tokenCount} tokens` : ''}`;
       case 'game/rematched': return 'started a rematch';
@@ -233,6 +235,37 @@
       return;
     }
     await appendFor(uid, 'cards/taken-one', { cardId: card.id });
+  }
+
+  function pendingRevealEntries() {
+    return Object.entries(lobby.pendingReveals);
+  }
+
+  function isConcealed(cardId: string) {
+    return pendingRevealEntries().some(([, pending]) => pending.cardIds.includes(cardId));
+  }
+
+  async function revealCards(actionId: string, cardIds?: string[]) {
+    if (!repository) return;
+    const pending = lobby.pendingReveals[actionId];
+    if (!pending) return;
+    await repository.append('cards/revealed', {
+      actionId,
+      cardIds: cardIds ?? pending.cardIds,
+      playerUid: pending.actorUid
+    });
+  }
+
+  async function undoTake(actionId: string) {
+    if (!repository) return;
+    const pending = lobby.pendingReveals[actionId];
+    if (!pending) return;
+    await repository.append('cards/undone', { actionId, playerUid: pending.actorUid });
+  }
+
+  async function revealCard(cardId: string) {
+    const entry = pendingRevealEntries().find(([, pending]) => pending.cardIds.includes(cardId));
+    if (entry) await revealCards(entry[0], [cardId]);
   }
 
   async function chooseExchangeTarget(uid: string, marketCardId: string) {
@@ -480,7 +513,6 @@
       source: box('.deck-card'),
       destinationSelector: `[data-market-card-id="${CSS.escape(card.id)}"]`,
       image: componentImage('card-back'),
-      revealImage: componentImage(card.kind),
       concealDestination: true,
       delay: 120 + index * 70
     }));
@@ -666,12 +698,25 @@
       {/if}
     </header>
     {#if lobby.round?.status === 'active'}
+      {#if pendingRevealEntries().length > 0}
+        <div class="reveal-controls" data-reveal-controls>
+          <span>New cards are face down.</span>
+          {#each pendingRevealEntries() as [actionId, pending] (actionId)}
+            <button type="button" data-confirm-reveal onclick={() => revealCards(actionId)}>Confirm reveal ({pending.cardIds.length})</button>
+            <button class="secondary" type="button" data-undo-action onclick={() => undoTake(actionId)}>Undo take</button>
+          {/each}
+        </div>
+      {/if}
       <div class="market-cards">
         {#each lobby.round.market as card, marketIndex (marketIndex)}
           {@const activeUid = lobby.round.activeUid}
           {@const loadedReturnId = exchangeLoads(activeUid)[card.id]}
           <div class="table-market-slot" data-market-slot-index={marketIndex}>
-            <button
+            {#if isConcealed(card.id)}
+              <button type="button" class="market-card concealed" data-market-card-id={card.id} data-card-concealed="true" aria-label="Reveal facedown card" onclick={() => revealCard(card.id)}>
+                <PieceArt kind="card-back" label="Facedown card" />
+              </button>
+            {:else}<button
               type="button"
               class="market-card"
               class:camel={card.kind === 'camel'}
@@ -683,7 +728,7 @@
               onclick={() => chooseMarket(card)}
             >
               <PieceArt kind={card.kind} label={label(card.kind)} detail={card.id} />
-            </button>
+            </button>{/if}
             {#if card.kind !== 'camel'}
               <button
                 type="button"

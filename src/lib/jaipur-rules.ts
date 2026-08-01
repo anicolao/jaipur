@@ -68,6 +68,7 @@ export interface GameState extends LobbyState {
   winnerUid: string | null;
   epoch: number;
   tabletopIntents: Record<string, TabletopIntent>;
+  pendingReveals: Record<string, { actorUid: string; cardIds: string[] }>;
 }
 
 export interface TabletopIntent {
@@ -280,6 +281,7 @@ export function reduceGame(events: GameEvent[]): GameState {
   let winnerUid: string | null = null;
   let epoch = 1;
   const tabletopIntents: Record<string, TabletopIntent> = {};
+  const pendingReveals: Record<string, { actorUid: string; cardIds: string[] }> = {};
 
   const actionActorUid = (event: GameEvent): string => {
     const requestedPlayerUid = event.payload.playerUid;
@@ -316,6 +318,18 @@ export function reduceGame(events: GameEvent[]): GameState {
     };
   };
 
+  const undoTargets = new Set<string>();
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index];
+    if (event.type !== 'cards/undone' || typeof event.payload.actionId !== 'string') continue;
+    const targetIndex = events.findIndex(({ id }) => id === event.payload.actionId);
+    const target = targetIndex >= 0 ? events[targetIndex] : undefined;
+    const hasLaterAction = targetIndex >= 0 && events.slice(targetIndex + 1, index).some(({ type }) =>
+      type === 'cards/taken-one' || type === 'cards/taken-camels' || type === 'cards/exchanged' || type === 'cards/sold'
+    );
+    if (target && (target.type === 'cards/taken-one' || target.type === 'cards/taken-camels') &&
+      target.actorUid === event.actorUid && !hasLaterAction) undoTargets.add(target.id);
+  }
   const seenIds = new Set<string>();
   for (const event of events) {
     if (seenIds.has(event.id)) continue;
@@ -326,6 +340,7 @@ export function reduceGame(events: GameEvent[]): GameState {
     ) {
       continue;
     }
+    if (undoTargets.has(event.id)) continue;
     if (event.type === 'game/rematched') {
       if (event.actorUid !== lobby.hostUid || !winnerUid) {
         lobby.diagnostics.push(`${event.id}: invalid rematch`);
@@ -380,6 +395,30 @@ export function reduceGame(events: GameEvent[]): GameState {
     }
 
     if (!round) continue;
+    if (event.type === 'cards/undone') {
+      const actionId = event.payload.actionId;
+      if (typeof actionId === 'string' && undoTargets.has(actionId)) {
+        const target = events.find(({ id }) => id === actionId);
+        lobby.activity.push({ id: event.id, type: event.type, actorUid: target?.actorUid ?? event.actorUid, actionId });
+      }
+      continue;
+    }
+    if (event.type === 'cards/revealed') {
+      const actionId = event.payload.actionId;
+      const cardIds = event.payload.cardIds;
+      const pending = typeof actionId === 'string' ? pendingReveals[actionId] : undefined;
+      if (!pending || actionActorUid(event) !== pending.actorUid || !Array.isArray(cardIds) ||
+        !cardIds.every((id): id is string => typeof id === 'string' && pending.cardIds.includes(id))) {
+        lobby.diagnostics.push(`${event.id}: invalid reveal`);
+        continue;
+      }
+      const revealActionId = actionId as string;
+      const revealedCardIds = cardIds as string[];
+      pending.cardIds = pending.cardIds.filter((id) => !revealedCardIds.includes(id));
+      if (pending.cardIds.length === 0) delete pendingReveals[revealActionId];
+      lobby.activity.push({ id: event.id, type: event.type, actorUid: pending.actorUid, actionId: revealActionId, revealedCardIds });
+      continue;
+    }
     if (event.type === 'tabletop/intent') {
       const actorUid = actionActorUid(event);
       const selectedReturnIds = event.payload.selectedReturnIds;
@@ -455,6 +494,8 @@ export function reduceGame(events: GameEvent[]): GameState {
       hand.push(card);
       const replacement = round.deck.shift();
       if (replacement) round.market.splice(marketIndex, 0, replacement);
+      const refillCardIds = replacement ? [replacement.id] : [];
+      if (refillCardIds.length) pendingReveals[event.id] = { actorUid, cardIds: refillCardIds };
       const result = finishAction(actorUid);
       lobby.activity.push({
         id: event.id,
@@ -464,6 +505,8 @@ export function reduceGame(events: GameEvent[]): GameState {
         turnNumber: round.turnNumber - 1,
         cardIds: [card.id],
         cardKinds: [card.kind],
+        actionId: event.id,
+        refillCardIds,
         ...result
       });
       continue;
@@ -476,6 +519,7 @@ export function reduceGame(events: GameEvent[]): GameState {
         lobby.diagnostics.push(`${event.id}: invalid camel take`);
         continue;
       }
+      const previousMarketIds = new Set(round.market.map(({ id }) => id));
       const deck = round.deck;
       const marketAfterCamels = round.market.flatMap((card) => {
         if (card.kind !== 'camel') return [card];
@@ -483,6 +527,8 @@ export function reduceGame(events: GameEvent[]): GameState {
         return replacement ? [replacement] : [];
       });
       round.market = marketAfterCamels;
+      const newIds = marketAfterCamels.filter(({ id }) => !previousMarketIds.has(id)).map(({ id }) => id);
+      if (newIds.length) pendingReveals[event.id] = { actorUid, cardIds: newIds };
       round.herds[actorUid].push(...camels);
       const result = finishAction(actorUid);
       lobby.activity.push({
@@ -493,6 +539,8 @@ export function reduceGame(events: GameEvent[]): GameState {
         turnNumber: round.turnNumber - 1,
         cardIds: camels.map(({ id }) => id),
         cardKinds: camels.map(({ kind }) => kind),
+        actionId: event.id,
+        refillCardIds: newIds,
         ...result
       });
       continue;
@@ -584,7 +632,7 @@ export function reduceGame(events: GameEvent[]): GameState {
   lobby.activity.sort(
     (left, right) => (eventOrder.get(left.id) ?? 0) - (eventOrder.get(right.id) ?? 0)
   );
-  return { ...lobby, round, rounds, seals, winnerUid, epoch, tabletopIntents };
+  return { ...lobby, round, rounds, seals, winnerUid, epoch, tabletopIntents, pendingReveals };
 }
 
 export function legalSingleGoods(round: RoundState, uid: string): Card[] {
