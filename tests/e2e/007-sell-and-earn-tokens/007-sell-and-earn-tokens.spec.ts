@@ -21,6 +21,33 @@ async function finishActionCardFlights(page: Page) {
   await expect(page.locator('.action-card-flight')).toHaveCount(0);
 }
 
+async function armFlightCapture(page: Page, selector: string, expectedCount: number) {
+  await page.evaluate(({ selector, expectedCount }) => {
+    const browserWindow = window as typeof window & { __jaipurFlightReady?: Promise<void> };
+    browserWindow.__jaipurFlightReady = new Promise((resolve) => {
+      const inspect = () => {
+        const flights = [...document.querySelectorAll<HTMLElement>(selector)];
+        if (flights.length < expectedCount) return;
+        for (const flight of flights) {
+          for (const animation of flight.getAnimations({ subtree: true })) animation.pause();
+        }
+        observer.disconnect();
+        resolve();
+      };
+      const observer = new MutationObserver(inspect);
+      observer.observe(document.body, { childList: true, subtree: true });
+      inspect();
+    });
+  }, { selector, expectedCount });
+}
+
+async function waitForFlightCapture(page: Page) {
+  await page.evaluate(async () => {
+    const browserWindow = window as typeof window & { __jaipurFlightReady?: Promise<void> };
+    await browserWindow.__jaipurFlightReady;
+  });
+}
+
 test('both traders sell goods and earn public and private tokens', async ({ browser, page }, testInfo) => {
   const steps = new TestStepHelper(page, testInfo);
   steps.setMetadata(
@@ -43,18 +70,21 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
   await expect(initialSpiceTokens.locator('.token-chip-rim')).toHaveText([
     '5', '3', '3', '2', '2', '1', '1'
   ]);
-  const visibleEdgeValues = spiceSupply.locator('.supply-edge-value');
-  await expect(visibleEdgeValues).toHaveText(['5', '3', '3', '2', '2', '1', '1']);
-  await expect(visibleEdgeValues).toHaveCount(7);
-  expect(parseFloat(await visibleEdgeValues.first().evaluate(
-    (value) => getComputedStyle(value).fontSize
-  ))).toBeGreaterThanOrEqual(11.5);
+  await expect(spiceSupply.locator('[data-token-stack]')).toHaveAttribute(
+    'data-stack-direction',
+    'vertical'
+  );
   const tokenBox = await initialSpiceTokens.first().boundingBox();
   expect(tokenBox?.width).toBeGreaterThanOrEqual(48);
   const secondTokenBox = await initialSpiceTokens.nth(1).boundingBox();
+  const firstRimBox = await initialSpiceTokens.first().locator('.token-chip-rim').boundingBox();
+  const secondRimBox = await initialSpiceTokens.nth(1).locator('.token-chip-rim').boundingBox();
   expect(tokenBox).not.toBeNull();
   expect(secondTokenBox).not.toBeNull();
-  expect(Math.abs(secondTokenBox!.x - tokenBox!.x)).toBeGreaterThanOrEqual(4);
+  expect(firstRimBox).not.toBeNull();
+  expect(secondRimBox).not.toBeNull();
+  expect(Math.abs(secondTokenBox!.x - tokenBox!.x)).toBeLessThanOrEqual(1);
+  expect(secondRimBox!.y - firstRimBox!.y).toBeGreaterThanOrEqual(firstRimBox!.height - 1);
   const centerValueStyle = await initialSpiceTokens.first().locator('.token-chip-center').evaluate(
     (value) => {
       const style = getComputedStyle(value);
@@ -79,9 +109,52 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
   ));
   expect(firstZ).toBeGreaterThan(lastZ);
 
+  await armFlightCapture(page, '.token-flight', 4);
   await page.getByRole('button', {
     name: 'Sell all 3 Spice to the Spice token stack'
   }).click();
+  await waitForFlightCapture(page);
+
+  const firstFlight = page.locator(`[data-token-flight-id="${firstSpiceId}"]`);
+  await expect(firstFlight).toHaveCount(1);
+  const awardedFlights = page.locator('.token-flight');
+  await expect(awardedFlights).toHaveCount(4);
+  await expect(awardedFlights.filter({ has: page.locator('[data-chip-kind="spice"]') }))
+    .toHaveCount(3);
+  const flightPath = await firstFlight.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      startLeft: parseFloat(style.getPropertyValue('--token-flight-start-left')),
+      startTop: parseFloat(style.getPropertyValue('--token-flight-start-top')),
+      startSize: parseFloat(style.getPropertyValue('--token-flight-start-size')),
+      endLeft: parseFloat(style.getPropertyValue('--token-flight-end-left')),
+      endTop: parseFloat(style.getPropertyValue('--token-flight-end-top')),
+      endSize: parseFloat(style.getPropertyValue('--token-flight-end-size'))
+    };
+  });
+  const flightStartBox = {
+    x: flightPath.startLeft,
+    y: flightPath.startTop,
+    width: flightPath.startSize,
+    height: flightPath.startSize
+  };
+  const flightEndBox = {
+    x: flightPath.endLeft,
+    y: flightPath.endTop,
+    width: flightPath.endSize,
+    height: flightPath.endSize
+  };
+  const ownDestinationBox = await page.locator('.own-token-tray').boundingBox();
+  expect(firstSpiceBox).not.toBeNull();
+  expect(ownDestinationBox).not.toBeNull();
+  expect(Math.hypot(
+    center(flightStartBox).x - center(firstSpiceBox!).x,
+    center(flightStartBox).y - center(firstSpiceBox!).y
+  )).toBeLessThanOrEqual(2);
+  expect(Math.hypot(
+    center(flightEndBox).x - center(ownDestinationBox!).x,
+    center(flightEndBox).y - center(ownDestinationBox!).y
+  )).toBeLessThanOrEqual(2);
 
   const rivalSaleFlights = rival.locator('.action-card-flight');
   await expect(rivalSaleFlights).toHaveCount(3);
@@ -92,41 +165,6 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
     'Asha sold 3 Spice · earned 4 tokens'
   );
 
-  const firstFlight = page.locator(`[data-token-flight-id="${firstSpiceId}"]`);
-  await expect(firstFlight).toHaveCount(1);
-  await firstFlight.evaluate((element) => {
-    const animation = element.getAnimations()[0];
-    animation.pause();
-    animation.currentTime = 0;
-  });
-  const awardedFlights = page.locator('.token-flight');
-  await expect(awardedFlights).toHaveCount(4);
-  await awardedFlights.evaluateAll((flights) => {
-    for (const flight of flights) {
-      for (const animation of flight.getAnimations()) animation.pause();
-    }
-  });
-  await expect(awardedFlights.filter({ has: page.locator('[data-chip-kind="spice"]') }))
-    .toHaveCount(3);
-  const flightStartBox = await firstFlight.boundingBox();
-  await firstFlight.evaluate((element) => {
-    const animation = element.getAnimations()[0];
-    animation.currentTime = Number(animation.effect?.getComputedTiming().endTime ?? 1) - 1;
-  });
-  const flightEndBox = await firstFlight.boundingBox();
-  const ownDestinationBox = await page.locator('.own-token-tray').boundingBox();
-  expect(firstSpiceBox).not.toBeNull();
-  expect(flightStartBox).not.toBeNull();
-  expect(flightEndBox).not.toBeNull();
-  expect(ownDestinationBox).not.toBeNull();
-  expect(Math.hypot(
-    center(flightStartBox!).x - center(firstSpiceBox!).x,
-    center(flightStartBox!).y - center(firstSpiceBox!).y
-  )).toBeLessThanOrEqual(2);
-  expect(Math.hypot(
-    center(flightEndBox!).x - center(ownDestinationBox!).x,
-    center(flightEndBox!).y - center(ownDestinationBox!).y
-  )).toBeLessThanOrEqual(2);
   await finishTokenFlights(page);
   await finishTokenFlights(rival);
   await finishActionCardFlights(page);

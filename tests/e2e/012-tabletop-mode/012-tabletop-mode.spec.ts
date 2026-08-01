@@ -1,6 +1,31 @@
 import { expect, test } from '@playwright/test';
 import { TestStepHelper } from '../helpers/test-step-helper';
 
+async function armFlightCapture(page: import('@playwright/test').Page, selector: string) {
+  await page.evaluate((flightSelector) => {
+    const browserWindow = window as typeof window & { __jaipurFlightReady?: Promise<void> };
+    browserWindow.__jaipurFlightReady = new Promise((resolve) => {
+      const inspect = () => {
+        const flight = document.querySelector<HTMLElement>(flightSelector);
+        if (!flight) return;
+        for (const animation of flight.getAnimations({ subtree: true })) animation.pause();
+        observer.disconnect();
+        resolve();
+      };
+      const observer = new MutationObserver(inspect);
+      observer.observe(document.body, { childList: true, subtree: true });
+      inspect();
+    });
+  }, selector);
+}
+
+async function waitForFlightCapture(page: import('@playwright/test').Page) {
+  await page.evaluate(async () => {
+    const browserWindow = window as typeof window & { __jaipurFlightReady?: Promise<void> };
+    await browserWindow.__jaipurFlightReady;
+  });
+}
+
 test('a fresh tabletop seats two QR-joined players around one touch market', async (
   { browser, page },
   testInfo
@@ -73,6 +98,21 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   await expect(page.locator('.top-log .corner-log')).toHaveClass(/inverted/);
   await expect(page.locator('.bottom-log .corner-log')).not.toHaveClass(/inverted/);
   await expect(page.locator('.token-rail .rail-token')).toHaveCount(6);
+  const leatherStack = page.locator('.token-rail [data-token-kind="leather"] [data-token-stack]');
+  await expect(leatherStack).toHaveAttribute('data-stack-direction', 'horizontal');
+  await expect(leatherStack.locator('.supply-token')).toHaveCount(9);
+  const firstRailRim = await leatherStack.locator('.token-chip-rim').nth(0).boundingBox();
+  const secondRailRim = await leatherStack.locator('.token-chip-rim').nth(1).boundingBox();
+  expect(firstRailRim).not.toBeNull();
+  expect(secondRailRim).not.toBeNull();
+  expect(secondRailRim!.x - firstRailRim!.x).toBeGreaterThanOrEqual(firstRailRim!.width - 1);
+  expect(Math.abs(secondRailRim!.y - firstRailRim!.y)).toBeLessThanOrEqual(1);
+  const deckBox = await page.locator('.deck-card').boundingBox();
+  const marketCardBox = await page.locator('.market-card').first().boundingBox();
+  expect(deckBox).not.toBeNull();
+  expect(marketCardBox).not.toBeNull();
+  expect(Math.abs(deckBox!.width - marketCardBox!.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(deckBox!.height - marketCardBox!.height)).toBeLessThanOrEqual(1);
   const marketBeforeExchange = await page.locator('.table-market-slot .market-card').evaluateAll(
     (cards) => cards.map((card) => card.getAttribute('data-market-card-id'))
   );
@@ -87,7 +127,9 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
 
   const targets = page.locator('.table-exchange-target:not(:disabled)');
   const firstTargetMarketId = await targets.nth(0).getAttribute('data-table-exchange-target');
+  await armFlightCapture(page, '.table-card-flight');
   await targets.nth(0).click();
+  await waitForFlightCapture(page);
   await expect(page.locator('.table-card-flight').first()).toBeVisible();
   await expect(page.locator('.table-exchange-target.loaded')).toHaveCount(1);
   await expect(firstPhone.locator('.selection-summary strong')).toHaveText('1 selected for the table');
@@ -116,10 +158,21 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   expect(marketAfterExchange).toEqual(expectedMarketAfterExchange);
 
   const publicTake = page.locator('.market-card:not(.camel):not(:disabled)').first();
+  await armFlightCapture(page, '.table-card-flight.flips');
   await publicTake.click();
-  await expect(page.locator('.table-card-flight').first()).toBeVisible();
-  await expect(page.locator('.table-card-flight.flips')).toHaveCount(1);
-  await expect(page.locator('.table-card-flight-front')).toHaveCount(1);
+  await waitForFlightCapture(page);
+  const refillFlight = page.locator('.table-card-flight.flips');
+  await expect(refillFlight).toHaveCount(1);
+  await expect(refillFlight).toBeVisible();
+  await expect(refillFlight.locator('.table-card-flight-front')).toHaveCount(1);
+  const refillFlightSizes = await refillFlight.evaluate((flight) => {
+    const style = getComputedStyle(flight);
+    return {
+      start: parseFloat(style.getPropertyValue('--start-size')),
+      end: parseFloat(style.getPropertyValue('--end-size'))
+    };
+  });
+  expect(Math.abs(refillFlightSizes.start - refillFlightSizes.end)).toBeLessThanOrEqual(1);
   const arrivingTableCard = page.locator('.market-card[data-card-arriving="true"]');
   await expect(arrivingTableCard).toHaveCount(1);
   await expect(arrivingTableCard).toHaveCSS('visibility', 'hidden');
@@ -137,7 +190,9 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   expect(saleKind).toBeTruthy();
   await saleCard.click();
   await expect(firstPhone.locator('.selection-summary strong')).toHaveText('1 selected for the table');
+  await armFlightCapture(page, '.table-token-flight');
   await page.locator(`[data-token-kind="${saleKind}"]`).click();
+  await waitForFlightCapture(page);
   await expect(page.locator('.table-token-flight').first()).toBeVisible();
   await expect(page.locator('[data-seat="1"] .seat-tokens')).toHaveText('1 token');
   await expect(page.locator('[data-seat="1"] .seat-tokens .token-chip')).toHaveCount(0);

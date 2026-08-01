@@ -5,7 +5,7 @@
   import { base } from '$app/paths';
   import { onMount } from 'svelte';
   import PieceArt from '$lib/PieceArt.svelte';
-  import TokenChip from '$lib/TokenChip.svelte';
+  import TokenStack from '$lib/TokenStack.svelte';
   import { initializeFirebase } from '$lib/firebase';
   import { createGameRepository, type GameRepository } from '$lib/game-repository';
   import { reduceGame, type Card, type GameState, type Token } from '$lib/jaipur-rules';
@@ -34,6 +34,10 @@
     ...(game.round.ownedBonusTokens[uid] ?? [])
   ] : [];
   const tokenTotal = () => ownedTokens().reduce((total, token) => total + token.value, 0);
+  const tokenStep = () => {
+    const count = Math.min(ownedTokens().length, 6);
+    return count <= 1 ? 0 : Math.min(1.05, 6.2 / (count - 1));
+  };
 
   onMount(async () => {
     const params = new URLSearchParams(location.search);
@@ -170,9 +174,12 @@
       </div>
       {#if ownedTokens().length > 0}
         <span class="private-earned-chip-row" aria-hidden="true">
-          {#each ownedTokens().slice(-6) as token}
-            <TokenChip {token} />
-          {/each}
+          <TokenStack
+            tokens={ownedTokens().slice(-6)}
+            direction="horizontal"
+            usage="private"
+            stepRem={tokenStep()}
+          />
         </span>
       {:else}
         <span class="no-tokens">No tokens yet</span>
@@ -269,8 +276,7 @@
   .private-tokens h2 { font-size: 1.1rem; }
   .private-tokens strong { font-size: 0.78rem; }
   .private-earned-chip-row { display: flex; min-width: 0; height: 2.7rem; align-items: center; justify-content: flex-end; overflow: hidden; padding-right: 0.15rem; }
-  .private-earned-chip-row :global(.token-chip) { width: 2.55rem; height: 2.55rem; flex: 0 0 auto; margin-left: -0.5rem; }
-  .private-earned-chip-row :global(.token-chip:first-child) { margin-left: 0; }
+  .private-earned-chip-row :global(.token-stack) { --token-stack-chip-size: 2.55rem; --token-stack-step: 1.05rem; }
   .no-tokens { color: #6e756d; font-size: 0.75rem; text-align: right; }
   .private-cards, .private-herd { margin-top: 0.75rem; }
   .private-cards > p { margin: 0.15rem 0 0.55rem; font-size: 0.78rem; }

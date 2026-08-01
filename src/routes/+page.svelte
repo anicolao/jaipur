@@ -13,6 +13,7 @@
   } from '$lib/game-repository';
   import PieceArt from '$lib/PieceArt.svelte';
   import TokenChip from '$lib/TokenChip.svelte';
+  import TokenStack from '$lib/TokenStack.svelte';
   import {
     isLegalExchange,
     isLegalSale,
@@ -1117,16 +1118,8 @@
     return ownedTokens(lobby, playerUid);
   }
 
-  function ownedTokenStyle(index: number, count: number): string {
-    const step = count <= 1 ? 0 : Math.min(0.82, 6.2 / (count - 1));
-    const rotation = [-5, 3, -2, 5, -3, 2][index % 6];
-    return `--owned-x: ${(index * step).toFixed(2)}rem; --owned-rotation: ${rotation}deg; z-index: ${index + 1}`;
-  }
-
-  function ownedTokenSpan(playerUid: string): string {
-    const count = allOwnedTokens(playerUid).length;
-    if (count <= 1) return '0rem';
-    return `${Math.min(6.2, (count - 1) * 0.82).toFixed(2)}rem`;
+  function ownedTokenStep(count: number): number {
+    return count <= 1 ? 0 : Math.min(1.05, 6.2 / (count - 1));
   }
 
   function tokenStackDescription(kind: Good): string {
@@ -1529,17 +1522,17 @@
           >
             <span
               class="opponent-token-pile"
-              style={`--owned-span: ${ownedTokenSpan(opponentUid())}`}
               aria-hidden="true"
             >
-              {#each allOwnedTokens(opponentUid()) as token, index}
-                <span
-                  class="opponent-owned-token"
-                  style={ownedTokenStyle(index, opponentTokenCount())}
-                >
-                  <TokenChip {token} hidden />
-                </span>
-              {/each}
+              {#if opponentTokenCount() > 0}
+                <TokenStack
+                  tokens={allOwnedTokens(opponentUid())}
+                  direction="horizontal"
+                  usage="opponent"
+                  stepRem={ownedTokenStep(opponentTokenCount())}
+                  hidden
+                />
+              {/if}
             </span>
             <span>{opponentTokenCount()} tokens · values hidden</span>
           </div>
@@ -1699,30 +1692,16 @@
                 <strong class="token-supply-label">{cardLabel(kind)}</strong>
                 <span
                   class="supply-chip-stack"
-                  style={`--supply-count: ${lobby.round.goodsTokens[kind].length}`}
                   aria-hidden="true"
                 >
-                  {#each lobby.round.goodsTokens[kind] as token, index}
-                    <span
-                      class="supply-token"
-                      data-supply-token-id={token.id}
-                      data-stack-position={index}
-                      style={supplyTokenStyle(index, lobby.round.goodsTokens[kind].length)}
-                    >
-                      <TokenChip {token} sideRim />
-                    </span>
+                  {#if lobby.round.goodsTokens[kind].length > 0}
+                    <TokenStack
+                      tokens={lobby.round.goodsTokens[kind]}
+                      direction="vertical"
+                      usage="supply"
+                    />
                   {:else}
                     <span class="empty-token-stack">—</span>
-                  {/each}
-                  {#if lobby.round.goodsTokens[kind].length > 0}
-                    <span
-                      class="supply-edge-values"
-                      style={`--edge-count: ${lobby.round.goodsTokens[kind].length}`}
-                    >
-                      {#each lobby.round.goodsTokens[kind] as token}
-                        <span class="supply-edge-value">{token.value}</span>
-                      {/each}
-                    </span>
                   {/if}
                 </span>
                 <span class="token-supply-count">{lobby.round.goodsTokens[kind].length} left</span>
@@ -1735,18 +1714,16 @@
           >
             <span
               class="owned-token-pile"
-              style={`--owned-span: ${ownedTokenSpan(uid)}`}
               aria-hidden="true"
             >
-              {#each allOwnedTokens(uid) as token, index}
-                <span
-                  class="owned-token"
-                  data-owned-token-id={token.id}
-                  style={ownedTokenStyle(index, allOwnedTokens(uid).length)}
-                >
-                  <TokenChip {token} />
-                </span>
-              {/each}
+              {#if allOwnedTokens(uid).length > 0}
+                <TokenStack
+                  tokens={allOwnedTokens(uid)}
+                  direction="horizontal"
+                  usage="owned"
+                  stepRem={ownedTokenStep(allOwnedTokens(uid).length)}
+                />
+              {/if}
             </span>
             <span>
               Your tokens:
@@ -2766,23 +2743,14 @@
   }
   .opponent-token-pile,
   .owned-token-pile {
-    position: relative;
     display: block;
-    width: calc(2.45rem + var(--owned-span, 0rem));
+    width: max-content;
     height: 2.55rem;
+    --token-stack-chip-size: 2.4rem;
+    --token-stack-step: 1.05rem;
   }
   .opponent-token-pile:empty {
     display: none;
-  }
-  .opponent-owned-token,
-  .owned-token {
-    position: absolute;
-    top: 0.05rem;
-    left: var(--owned-x);
-    display: block;
-    width: 2.4rem;
-    height: 2.4rem;
-    transform: rotate(var(--owned-rotation));
   }
   .opponent-hand {
     display: flex;
@@ -3091,7 +3059,7 @@
   }
   .token-area {
     --supply-chip-size: clamp(3rem, 8vmin, 3.75rem);
-    --supply-chip-step: clamp(0.26rem, 0.75vmin, 0.45rem);
+    --supply-chip-step: 1.05rem;
     display: grid;
     min-width: 0;
     grid-area: tokens;
@@ -3145,7 +3113,7 @@
   }
   .tokens {
     grid-template-columns: repeat(6, minmax(0, 1fr));
-    align-items: start;
+    align-items: stretch;
     gap: 0.12rem;
   }
   .token {
@@ -3183,62 +3151,13 @@
     white-space: nowrap;
   }
   .supply-chip-stack {
-    position: relative;
-    display: block;
+    display: flex;
     width: 100%;
-    height: var(--supply-chip-size);
+    justify-content: center;
   }
-  .supply-token {
-    position: absolute;
-    z-index: var(--token-z);
-    top: 0;
-    left: calc(
-      50% -
-      (var(--supply-chip-size) + (var(--supply-count) - 1) * var(--supply-chip-step)) / 2 +
-      var(--token-index) * var(--supply-chip-step)
-    );
-    display: block;
-    width: var(--supply-chip-size);
-    height: var(--supply-chip-size);
-    transform: none;
-  }
-  .supply-token :global(.token-chip-rim) {
-    display: none;
-  }
-  .supply-edge-values {
-    position: absolute;
-    z-index: 100;
-    top: calc(var(--supply-chip-size) - 0.8rem);
-    left: 50%;
-    display: grid;
-    width: min(
-      calc(100% + 0.8rem),
-      calc(var(--supply-chip-size) + (var(--edge-count) - 1) * var(--supply-chip-step))
-    );
-    height: 0.92rem;
-    grid-template-columns: repeat(var(--edge-count), minmax(0, 1fr));
-    filter: drop-shadow(0 0.08rem 0.08rem rgb(24 58 55 / 34%));
-    pointer-events: none;
-    transform: translateX(-50%);
-  }
-  .supply-edge-value {
-    display: grid;
-    min-width: 0;
-    place-items: center;
-    border-block: 1px solid #183a37;
-    border-left: 1px solid #183a37;
-    background: #f8e7b7;
-    color: #183a37;
-    font-size: 0.9rem;
-    font-weight: 700;
-    line-height: 1;
-  }
-  .supply-edge-value:first-child {
-    border-radius: 0.45rem 0 0 0.45rem;
-  }
-  .supply-edge-value:last-child {
-    border-right: 1px solid #183a37;
-    border-radius: 0 0.45rem 0.45rem 0;
+  .supply-chip-stack :global(.token-stack) {
+    --token-stack-chip-size: var(--supply-chip-size);
+    --token-stack-step: var(--supply-chip-step);
   }
   .empty-token-stack {
     display: grid;
@@ -3265,7 +3184,7 @@
     white-space: nowrap;
   }
   .owned-token-pile {
-    flex: 0 0 calc(2.45rem + var(--owned-span, 0rem));
+    flex: 0 0 auto;
   }
   .owned-token-pile:empty {
     display: none;
@@ -3453,6 +3372,7 @@
       height: 1.65rem;
     }
     .table {
+      --card-size: clamp(4.15rem, 17.5vw, 4.5rem);
       grid-template:
         'meta seals' auto
         'market market' minmax(0, auto)
@@ -3470,8 +3390,8 @@
       gap: 0.15rem;
     }
     .cards.market {
-      grid-template-columns: repeat(3, var(--card-size));
-      justify-content: space-around;
+      grid-template-columns: repeat(5, var(--card-size));
+      justify-content: space-between;
     }
     .cards article,
     .cards .card-action {
@@ -3609,7 +3529,13 @@
       padding: 0.25rem 0.4rem 2.5rem;
     }
     .table {
-      grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+      --card-size: clamp(3.25rem, 13.5vh, 3.5rem);
+      grid-template:
+        'meta meta' auto
+        'market hand' minmax(0, 1fr)
+        'opponent opponent' auto
+        'tokens tokens' auto /
+        minmax(0, 1.2fr) minmax(0, 0.8fr);
       gap: 0.2rem 0.4rem;
     }
     .cards.market {
@@ -3630,6 +3556,24 @@
     .hand-zone {
       padding: 0.18rem;
     }
+    .hand-zone {
+      position: relative;
+    }
+    .cards.hand {
+      width: calc(100% - var(--card-size) - 0.3rem);
+    }
+    .own-herd {
+      position: absolute;
+      top: 1.15rem;
+      right: 0.18rem;
+      width: var(--card-size);
+      min-height: var(--card-size);
+      grid-template-columns: 1fr;
+      margin: 0;
+    }
+    .own-herd-label {
+      display: none;
+    }
     .table h2 {
       font-size: 1rem;
     }
@@ -3640,12 +3584,54 @@
       min-height: 44px;
       padding: 0.2rem 0.45rem;
     }
+    .token-area {
+      grid-template-rows: auto auto;
+    }
+    .tokens {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.08rem;
+    }
     .token {
+      width: max-content;
+      min-height: 0;
+      flex: 0 0 auto;
+      grid-template-rows: auto auto;
       --supply-chip-size: 2.55rem;
-      --supply-chip-step: 0.22rem;
+      --supply-chip-step: 1.05rem;
+    }
+    .token-supply-count {
+      display: none;
+    }
+    .supply-chip-stack :global(.token-stack.vertical) {
+      width: calc(
+        var(--token-stack-chip-size) +
+        (var(--token-stack-count) - 1) * var(--token-stack-step)
+      );
+      height: var(--token-stack-chip-size);
+    }
+    .supply-chip-stack :global(.token-stack.vertical .stacked-token) {
+      top: 0;
+      left: calc(var(--token-stack-index) * var(--token-stack-step));
+    }
+    .supply-chip-stack :global(.token-stack.vertical .token-chip-rim) {
+      top: 50%;
+      right: -0.02rem;
+      bottom: auto;
+      left: auto;
+      transform: translateY(-50%);
     }
     .own-token-tray > span:last-child {
       display: none;
+    }
+    .own-token-tray {
+      position: fixed;
+      z-index: 55;
+      bottom: 0.3rem;
+      left: clamp(9rem, 18vw, 10rem);
+      min-height: 2.55rem;
+      margin: 0;
     }
     .camel-herd {
       min-height: 34px;
