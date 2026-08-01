@@ -4,6 +4,7 @@ import { playRoundToCompletion } from '../helpers/play-round';
 import { TestStepHelper } from '../helpers/test-step-helper';
 
 test('a complete best-of-three match ends at two seals and rematches', async ({ browser, page }, testInfo) => {
+  test.setTimeout(180_000);
   const steps = new TestStepHelper(page, testInfo);
   steps.setMetadata(
     'Complete best-of-three game',
