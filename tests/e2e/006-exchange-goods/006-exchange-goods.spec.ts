@@ -15,6 +15,9 @@ test('the active trader exchanges market goods for herd camels', async ({ browse
     'fixed-round-006-0'
   );
   const deckBefore = await page.getByText('Deck').locator('..').locator('strong').textContent();
+  const marketBefore = await page.locator('.market-slot [data-card-id]').evaluateAll(
+    (cards) => cards.map((card) => card.getAttribute('data-card-id'))
+  );
 
   await expect(
     page
@@ -34,6 +37,8 @@ test('the active trader exchanges market goods for herd camels', async ({ browse
     .locator('.market-slot')
     .filter({ hasText: 'Gold' })
     .locator('.exchange-drop-target');
+  const diamondSlot = Number(await diamondDrop.locator('..').getAttribute('data-market-slot-index'));
+  const goldSlot = Number(await goldDrop.locator('..').getAttribute('data-market-slot-index'));
 
   await diamondDrop.click();
   const handSource = page.locator('.hand .hand-card').first();
@@ -196,6 +201,13 @@ test('the active trader exchanges market goods for herd camels', async ({ browse
           await expect(page.locator('.own-herd-label strong')).toHaveText('1 camel');
           await expect(rival.locator('.opponent-herd .camel-pile img')).toHaveCount(1);
           await expect(page.locator('.market .camel')).toHaveCount(4);
+          const marketAfter = await page.locator('.market-slot [data-card-id]').evaluateAll(
+            (cards) => cards.map((card) => card.getAttribute('data-card-id'))
+          );
+          const expectedMarket = [...marketBefore];
+          expectedMarket[diamondSlot] = handCardId;
+          expectedMarket[goldSlot] = topCamelId;
+          expect(marketAfter).toEqual(expectedMarket);
         }
       },
       {

@@ -73,6 +73,9 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   await expect(page.locator('.top-log .corner-log')).toHaveClass(/inverted/);
   await expect(page.locator('.bottom-log .corner-log')).not.toHaveClass(/inverted/);
   await expect(page.locator('.token-rail .rail-token')).toHaveCount(6);
+  const marketBeforeExchange = await page.locator('.table-market-slot .market-card').evaluateAll(
+    (cards) => cards.map((card) => card.getAttribute('data-market-card-id'))
+  );
 
   const privateCards = firstPhone.locator('.card-grid [data-private-card-id]:not(.loaded)');
   const firstReturnId = await privateCards.nth(0).getAttribute('data-private-card-id');
@@ -83,11 +86,16 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   await expect(firstPhone.locator('.selection-summary strong')).toHaveText('2 selected for the table');
 
   const targets = page.locator('.table-exchange-target:not(:disabled)');
+  const firstTargetMarketId = await targets.nth(0).getAttribute('data-table-exchange-target');
   await targets.nth(0).click();
   await expect(page.locator('.table-card-flight').first()).toBeVisible();
   await expect(page.locator('.table-exchange-target.loaded')).toHaveCount(1);
   await expect(firstPhone.locator('.selection-summary strong')).toHaveText('1 selected for the table');
   await page.locator('.table-exchange-target:not(.loaded):not(:disabled)').first().click();
+  const secondTargetMarketId = await page
+    .locator('.table-exchange-target.loaded')
+    .nth(1)
+    .getAttribute('data-table-exchange-target');
   await expect(page.locator('.table-exchange-target.loaded')).toHaveCount(2);
   await expect(firstPhone.locator('.selection-summary strong')).toHaveText('0 selected for the table');
   await expect(firstPhone.locator('.card-grid button.loaded')).toHaveCount(2);
@@ -99,6 +107,13 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   await expect(page.locator('.bottom-log li').first()).toContainText(/^Asha traded /);
   await page.locator('.bottom-log summary').click();
   await expect(page.locator('.table-card-flight, .table-token-flight')).toHaveCount(0, { timeout: 3000 });
+  const marketAfterExchange = await page.locator('.table-market-slot .market-card').evaluateAll(
+    (cards) => cards.map((card) => card.getAttribute('data-market-card-id'))
+  );
+  const expectedMarketAfterExchange = [...marketBeforeExchange];
+  expectedMarketAfterExchange[marketBeforeExchange.indexOf(firstTargetMarketId)] = firstReturnId;
+  expectedMarketAfterExchange[marketBeforeExchange.indexOf(secondTargetMarketId)] = secondReturnId;
+  expect(marketAfterExchange).toEqual(expectedMarketAfterExchange);
 
   const publicTake = page.locator('.market-card:not(.camel):not(:disabled)').first();
   await publicTake.click();

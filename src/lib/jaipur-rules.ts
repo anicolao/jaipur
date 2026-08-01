@@ -476,11 +476,14 @@ export function reduceGame(events: GameEvent[]): GameState {
         lobby.diagnostics.push(`${event.id}: invalid camel take`);
         continue;
       }
-      round.market = round.market.filter(({ kind }) => kind !== 'camel');
+      const deck = round.deck;
+      const marketAfterCamels = round.market.flatMap((card) => {
+        if (card.kind !== 'camel') return [card];
+        const replacement = deck.shift();
+        return replacement ? [replacement] : [];
+      });
+      round.market = marketAfterCamels;
       round.herds[actorUid].push(...camels);
-      while (round.market.length < 5 && round.deck.length > 0) {
-        round.market.push(round.deck.shift()!);
-      }
       const result = finishAction(actorUid);
       lobby.activity.push({
         id: event.id,
@@ -512,12 +515,14 @@ export function reduceGame(events: GameEvent[]): GameState {
         lobby.diagnostics.push(`${event.id}: invalid exchange`);
         continue;
       }
-      const taken = round.market.filter(({ id }) => takenIds.includes(id));
-      const returned = [...hand, ...herd].filter(({ id }) => returnedIds.includes(id));
-      round.market = [
-        ...round.market.filter(({ id }) => !takenIds.includes(id)),
-        ...returned
-      ];
+      const availableReturns = [...hand, ...herd];
+      const marketBeforeExchange = round.market;
+      const taken = takenIds.map((id) => marketBeforeExchange.find((card) => card.id === id)!);
+      const returned = returnedIds.map((id) => availableReturns.find((card) => card.id === id)!);
+      round.market = marketBeforeExchange.map((card) => {
+        const exchangedIndex = takenIds.indexOf(card.id);
+        return exchangedIndex >= 0 ? returned[exchangedIndex] : card;
+      });
       round.hands[actorUid] = [
         ...hand.filter(({ id }) => !returnedIds.includes(id)),
         ...taken

@@ -17,8 +17,12 @@ test('the active trader takes one good and refills the market', async ({ browser
 
   const handBefore = await page.locator('.hand [data-card-id]').count();
   const deckBefore = Number(await page.getByText('Deck').locator('..').locator('strong').textContent());
+  const marketBefore = await page.locator('.market-slot [data-card-id]').evaluateAll(
+    (cards) => cards.map((card) => card.getAttribute('data-card-id'))
+  );
   const target = page.locator('.market .card-action:not(.camel)').first();
   const cardId = await target.getAttribute('data-card-id');
+  const targetSlot = Number(await target.locator('..').getAttribute('data-market-slot-index'));
   await target.click();
 
   const observerFlights = rival.locator('.action-card-flight');
@@ -69,6 +73,12 @@ test('the active trader takes one good and refills the market', async ({ browser
         check: async () => {
           await expect(page.locator('.market .market-slot')).toHaveCount(5);
           await expect(page.getByText('Deck').locator('..')).toContainText(String(deckBefore - 1));
+          const marketAfter = await page.locator('.market-slot [data-card-id]').evaluateAll(
+            (cards) => cards.map((card) => card.getAttribute('data-card-id'))
+          );
+          expect(marketAfter[targetSlot]).not.toBe(marketBefore[targetSlot]);
+          expect(marketAfter.filter((_, index) => index !== targetSlot))
+            .toEqual(marketBefore.filter((_, index) => index !== targetSlot));
         }
       },
       {

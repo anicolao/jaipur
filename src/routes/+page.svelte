@@ -1406,12 +1406,13 @@
             </div>
           {/if}
           <div class="cards market">
-            {#each lobby.round.market as card}
+            {#each lobby.round.market as card, marketIndex (marketIndex)}
               {@const loadedReturn = exchangeReturnCard(card.id)}
               <div
                 class="market-slot"
                 class:loaded={Boolean(exchangeLoads[card.id])}
                 class:awaiting={activeExchangeTarget === card.id}
+                data-market-slot-index={marketIndex}
               >
                 {#if lobby.round.activeUid === uid}
                   <button
