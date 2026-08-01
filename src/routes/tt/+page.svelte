@@ -863,6 +863,8 @@
     font-family: 'Atkinson Hyperlegible', sans-serif;
   }
   .arriving { visibility: hidden !important; }
+  .reveal-controls { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.45rem; margin: 0.45rem auto; }
+  .reveal-controls span { flex-basis: 100%; text-align: center; }
   button, summary { font: inherit; }
   button:focus-visible, summary:focus-visible { outline: 3px solid #d38b21; outline-offset: 2px; }
   .tabletop {
