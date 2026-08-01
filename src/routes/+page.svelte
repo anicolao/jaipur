@@ -25,6 +25,11 @@
     type Token
   } from '$lib/jaipur-rules';
   import { generateRoomCode, isRoomCode, normalizeRoomCode } from '$lib/room-code';
+  import {
+    beginPendingDraw,
+    pendingDrawIsCurrent,
+    type PendingDraw
+  } from '$lib/pending-draw';
   import type { GameActivity } from '$lib/game-events';
 
   type ActionMovementPlan = {
@@ -48,6 +53,7 @@
   let lobby = $state<GameState>(reduceGame([]));
   let repository = $state<GameRepository>();
   let busy = $state(false);
+  let pendingDraw = $state<PendingDraw | null>(null);
   let shellOnly = $state(true);
   let exchangeLoads = $state<Record<string, string>>({});
   let returnFlights = $state<Array<{
@@ -183,6 +189,9 @@
         const tokenAwards = repositorySnapshotReady
           ? captureTokenAwards(lobby, nextLobby)
           : [];
+        if (pendingDraw && !busy && !pendingDrawIsCurrent(pendingDraw, nextLobby.round)) {
+          pendingDraw = null;
+        }
         lobby = nextLobby;
         if (!repositorySnapshotReady) {
           rememberOwnedTokenAwards(nextLobby);
@@ -324,6 +333,7 @@
         roundNumber: lobby.round.number,
         turnNumber: lobby.round.turnNumber
       });
+      pendingDraw = null;
       resetInteractions();
     } catch (error) {
       showError(error);
@@ -340,12 +350,40 @@
         roundNumber: lobby.round.number,
         turnNumber: lobby.round.turnNumber
       });
+      pendingDraw = null;
       resetInteractions();
     } catch (error) {
       showError(error);
     } finally {
       busy = false;
     }
+  }
+
+  function initiateDraw(card: Card) {
+    if (!lobby.round || lobby.round.activeUid !== uid || pendingDraw || busy) return;
+    const nextPendingDraw = beginPendingDraw(lobby.round, card);
+    if (!nextPendingDraw) return;
+    resetInteractions();
+    pendingDraw = nextPendingDraw;
+  }
+
+  function abandonPendingDraw() {
+    if (busy) return;
+    pendingDraw = null;
+  }
+
+  async function confirmPendingDraw() {
+    const draw = pendingDraw;
+    if (!draw || !pendingDrawIsCurrent(draw, lobby.round)) {
+      pendingDraw = null;
+      return;
+    }
+    if (draw.kind === 'camels') await takeCamels();
+    else await takeOne(draw.cardIds[0]);
+  }
+
+  function isPendingDrawCard(cardId: string): boolean {
+    return pendingDraw?.cardIds.includes(cardId) ?? false;
   }
 
   function toggleSelection(list: string[], id: string): string[] {
@@ -663,6 +701,7 @@
     if (
       !repository ||
       !lobby.round ||
+      pendingDraw ||
       !isLegalExchange(lobby.round, uid, selectedMarket, selectedReturn)
     ) {
       return;
@@ -693,6 +732,7 @@
   function canSellTo(kind: Good): boolean {
     if (
       busy ||
+      pendingDraw ||
       status === 'offline' ||
       lobby.round?.activeUid !== uid ||
       exchangeMarketIds().length > 0 ||
@@ -721,6 +761,7 @@
     if (
       !repository ||
       !lobby.round ||
+      pendingDraw ||
       !cardIds.every((cardId) => handCard(cardId)?.kind === kind) ||
       !isLegalSale(lobby.round, uid, kind, cardIds)
     ) {
@@ -1280,10 +1321,18 @@
         </div>
         <section
           class="market-zone"
+          class:draw-pending={Boolean(pendingDraw)}
           aria-labelledby="market-heading"
           style={`--zone-art: url("${componentImage('card-back')}")`}
         >
           <h2 id="market-heading">Market</h2>
+          {#if pendingDraw}
+            <div class="draw-confirmation" role="group" aria-label="Confirm draw" data-pending-draw={pendingDraw.kind}>
+              <span>{pendingDraw.kind === 'camels' ? `Take all ${pendingDraw.cardIds.length} camels?` : 'Take this card?'}</span>
+              <button type="button" disabled={busy || status === 'offline'} data-confirm-draw onclick={confirmPendingDraw}>Confirm</button>
+              <button class="secondary" type="button" disabled={busy} data-abandon-draw onclick={abandonPendingDraw}>Undo</button>
+            </div>
+          {/if}
           {#if lobby.round.activeUid === uid && (exchangeMarketIds().length > 0 || activeExchangeTarget || selectedHand.length > 0 || selectedCamelId)}
             <div class="interaction-tray" aria-live="polite">
               <p>
@@ -1324,19 +1373,31 @@
                 class:awaiting={activeExchangeTarget === card.id}
                 data-market-slot-index={marketIndex}
               >
-                {#if lobby.round.activeUid === uid}
+                {#if isPendingDrawCard(card.id)}
+                  <button
+                    class="card-action pending-draw-card"
+                    type="button"
+                    disabled={busy || status === 'offline'}
+                    aria-label="Confirm draw"
+                    data-card-id={card.id}
+                    data-pending-draw-card={card.id}
+                    onclick={confirmPendingDraw}
+                  >
+                    <PieceArt kind="card-back" label="Facedown card" />
+                  </button>
+                {:else if lobby.round.activeUid === uid}
                   <button
                     class="card-action"
                     class:camel={card.kind === 'camel'}
                     class:arriving={arrivingCardIds.includes(card.id)}
                     type="button"
-                    disabled={busy || status === 'offline' || (card.kind !== 'camel' && (lobby.round.hands[uid]?.length ?? 0) >= 7)}
+                    disabled={busy || Boolean(pendingDraw) || status === 'offline' || (card.kind !== 'camel' && (lobby.round.hands[uid]?.length ?? 0) >= 7)}
                     aria-label={card.kind === 'camel'
                       ? `Take all ${lobby.round.market.filter(({ kind }) => kind === 'camel').length} camels`
                       : `Take ${cardLabel(card.kind)} ${card.id}`}
                     data-card-id={card.id}
                     data-card-arriving={arrivingCardIds.includes(card.id) || undefined}
-                    onclick={() => card.kind === 'camel' ? takeCamels() : takeOne(card.id)}
+                    onclick={() => initiateDraw(card)}
                   >
                     <PieceArt kind={card.kind} label={cardLabel(card.kind)} detail={card.id} />
                   </button>
@@ -1357,7 +1418,7 @@
                     class:awaiting={activeExchangeTarget === card.id}
                     class:drop-ready={Boolean(draggedReturnId)}
                     type="button"
-                    disabled={busy || status === 'offline' || (!loadedReturn && availableReturnCards(card.id).length === 0)}
+                    disabled={busy || Boolean(pendingDraw) || status === 'offline' || (!loadedReturn && availableReturnCards(card.id).length === 0)}
                     data-exchange-target={card.id}
                     aria-label={loadedReturn
                       ? `Remove ${cardLabel(loadedReturn.kind)} ${loadedReturn.id} from the exchange for ${cardLabel(card.kind)} ${card.id}`
@@ -2083,6 +2144,27 @@
     border-left: 3px solid #a23e2a;
     background: #f6e5c7;
     color: #274d47;
+  }
+  .draw-confirmation {
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.65rem;
+    padding: 0.35rem 0.45rem 0.35rem 0.65rem;
+    border-left: 3px solid #a23e2a;
+    background: #f6e5c7;
+  }
+  .draw-confirmation span { flex: 1; font-weight: 700; }
+  .draw-confirmation button { border-radius: 99rem; }
+  .market-zone.draw-pending .exchange-drop-target { visibility: hidden; }
+  .pending-draw-card :global(.piece-image) {
+    animation: pending-draw-turn 220ms ease-out both;
+    transform-origin: center;
+  }
+  @keyframes pending-draw-turn {
+    from { opacity: 0.45; transform: rotateY(80deg); }
+    to { opacity: 1; transform: rotateY(0); }
   }
   .cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.55rem; }
   .cards article, .cards .card-action {
