@@ -98,6 +98,10 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   await expect(page.locator('.top-log .corner-log')).toHaveClass(/inverted/);
   await expect(page.locator('.bottom-log .corner-log')).not.toHaveClass(/inverted/);
   await expect(page.locator('.token-rail .rail-token')).toHaveCount(6);
+  const enabledRailToken = page.locator('.token-rail .rail-token:not(:disabled)').first();
+  const disabledRailToken = page.locator('.token-rail .rail-token:disabled').first();
+  await expect(enabledRailToken).toHaveCSS('opacity', '1');
+  await expect(disabledRailToken).toHaveCSS('opacity', '1');
   const leatherStack = page.locator('.token-rail [data-token-kind="leather"] [data-token-stack]');
   await expect(leatherStack).toHaveAttribute('data-stack-direction', 'horizontal');
   await expect(leatherStack.locator('.supply-token')).toHaveCount(9);
@@ -200,7 +204,7 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   await expect(firstPhone.locator('[data-private-token-tray]')).toContainText(/1 worth \d+ points/);
   await expect(firstPhone.locator('[data-private-token-tray] .token-chip')).toHaveCount(1);
   const privateTokenValue = await firstPhone
-    .locator('[data-private-token-tray] .token-chip-center')
+    .locator('[data-private-token-tray] .token-chip-rim')
     .textContent();
   await expect(firstPhone.locator('[data-private-token-tray]'))
     .toContainText(`1 worth ${privateTokenValue} points`);

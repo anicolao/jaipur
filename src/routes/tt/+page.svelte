@@ -971,7 +971,7 @@
   .bonus-row { display: flex; justify-content: center; gap: 0.25rem; font-size: clamp(0.55rem, 1.1vmin, 0.72rem); }
   .bonus-row span { padding: 0.18rem 0.3rem; border-radius: 99rem; background: #e9dcc1; }
   .rail-token { display: grid; min-width: 0; min-height: 44px; grid-template-rows: minmax(0, 1fr) auto; place-items: center; gap: 0.1rem; padding: 0.15rem; overflow: visible; border: 1px solid #b7aa8d; border-radius: 0.6rem; background: #f5ead3; color: #183a37; font-size: clamp(0.56rem, 1.1vmin, 0.76rem); text-align: center; }
-  .rail-token:disabled { opacity: 0.72; }
+  .rail-token:disabled { opacity: 1; }
   .rail-chip { display: grid; width: 100%; min-width: 0; place-items: center; }
   .rail-chip :global(.token-stack) {
     --token-stack-chip-size: clamp(2.4rem, 4.5vmin, 2.8rem);
