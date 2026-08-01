@@ -162,8 +162,18 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   expect(marketAfterExchange).toEqual(expectedMarketAfterExchange);
 
   const publicTake = page.locator('.market-card:not(.camel):not(:disabled)').first();
-  await armFlightCapture(page, '.table-card-flight.flips');
   await publicTake.click();
+  await expect(page.locator('[data-pending-draw="one"]')).toBeVisible();
+  await expect(page.locator('[data-pending-draw-card]')).toHaveCount(1);
+  await expect(page.locator('.table-card-flight')).toHaveCount(0);
+  await page.locator('[data-abandon-draw]').click();
+  await expect(page.locator('[data-pending-draw]')).toHaveCount(0);
+  await expect(page.locator('.table-card-flight')).toHaveCount(0);
+
+  await publicTake.click();
+  await expect(page.locator('[data-pending-draw="one"]')).toBeVisible();
+  await armFlightCapture(page, '.table-card-flight.flips');
+  await page.locator('[data-confirm-draw]').click();
   await waitForFlightCapture(page);
   const refillFlight = page.locator('.table-card-flight.flips');
   await expect(refillFlight).toHaveCount(1);
