@@ -87,31 +87,32 @@
   .token-chip-rim {
     position: absolute;
     z-index: 3;
-    right: 20%;
+    right: auto;
     bottom: -0.02rem;
-    left: 20%;
-    padding: 0.05rem 0;
+    left: 50%;
+    display: grid;
+    width: 1rem;
+    height: 1rem;
+    padding: 0;
+    place-items: center;
     border-radius: 50%;
     background: #f8e7b7;
     color: #183a37;
-    font-size: clamp(0.8rem, 38cqi, 0.96rem);
+    font-size: clamp(0.72rem, 30cqi, 0.84rem);
     font-weight: 700;
     line-height: 1;
     text-align: center;
     text-shadow: none;
+    transform: translateX(-50%);
   }
   .token-chip.hidden .token-chip-image {
     opacity: 0.94;
   }
   .token-chip.side-rim .token-chip-rim {
-    top: 32%;
+    top: 50%;
     right: -0.02rem;
-    bottom: 32%;
+    bottom: auto;
     left: auto;
-    display: grid;
-    width: 0.88rem;
-    padding: 0;
-    place-items: center;
-    font-size: 0.9rem;
+    transform: translateY(-50%);
   }
 </style>

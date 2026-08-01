@@ -7,6 +7,7 @@
   import QRCode from 'qrcode';
   import PieceArt from '$lib/PieceArt.svelte';
   import TokenChip from '$lib/TokenChip.svelte';
+  import TokenStack from '$lib/TokenStack.svelte';
   import { initializeFirebase } from '$lib/firebase';
   import {
     createGameRepository,
@@ -475,7 +476,7 @@
     ) ?? [];
     refills.forEach((card, index) => movements.push({
       cardId: card.id,
-      source: box('.deck'),
+      source: box('.deck-card'),
       destinationSelector: `[data-market-card-id="${CSS.escape(card.id)}"]`,
       image: componentImage('card-back'),
       revealImage: componentImage(card.kind),
@@ -655,7 +656,10 @@
       <span>Tabletop <strong>{gameId || '•••••'}</strong></span>
       {#if lobby.round}
         <span>Round {lobby.round.number}</span>
-        <span class="deck"><img src={componentImage('card-back')} alt="" /> {lobby.round.deck.length}</span>
+        <span class="deck">
+          <img class="deck-card" src={componentImage('card-back')} alt="" />
+          <span>Deck <b>{lobby.round.deck.length}</b></span>
+        </span>
       {:else}
         <span>Waiting for both traders</span>
       {/if}
@@ -755,8 +759,12 @@
           onclick={() => sell(kind)}
         >
           <span class="rail-chip">
-            {#if lobby.round.goodsTokens[kind][0]}
-              <TokenChip token={lobby.round.goodsTokens[kind][0]} />
+            {#if lobby.round.goodsTokens[kind].length > 0}
+              <TokenStack
+                tokens={lobby.round.goodsTokens[kind]}
+                direction="horizontal"
+                usage="rail"
+              />
             {:else}
               <span>—</span>
             {/if}
@@ -925,8 +933,16 @@
   }
   .shared-market > header { display: flex; align-items: center; justify-content: center; gap: clamp(1rem, 5vw, 4rem); font-size: clamp(0.7rem, 1.5vmin, 0.95rem); }
   .shared-market > header strong { letter-spacing: 0.14em; }
-  .deck { display: flex; align-items: center; gap: 0.3rem; }
-  .deck img { width: 1.5rem; height: 1.9rem; border-radius: 0.2rem; object-fit: cover; }
+  .deck { display: flex; align-items: center; gap: 0.4rem; }
+  .deck > span { display: grid; text-align: left; }
+  .deck-card {
+    width: clamp(4.4rem, 15vh, 8.5rem);
+    height: clamp(4.4rem, 15vh, 8.5rem);
+    border: 2px solid #315f58;
+    border-radius: 0.55rem;
+    box-shadow: 0 0.25rem 0.5rem rgb(10 32 30 / 22%);
+    object-fit: cover;
+  }
   .market-cards { display: flex; min-height: 0; align-items: center; justify-content: center; gap: clamp(0.35rem, 1.6vw, 1.4rem); }
   .table-market-slot { display: grid; min-width: 0; place-items: center; gap: clamp(0.2rem, 0.7vh, 0.4rem); }
   .market-card { width: clamp(4.4rem, 15vh, 8.5rem); height: clamp(4.4rem, 15vh, 8.5rem); }
@@ -954,10 +970,13 @@
   .token-rail h2 { text-align: center; }
   .bonus-row { display: flex; justify-content: center; gap: 0.25rem; font-size: clamp(0.55rem, 1.1vmin, 0.72rem); }
   .bonus-row span { padding: 0.18rem 0.3rem; border-radius: 99rem; background: #e9dcc1; }
-  .rail-token { display: grid; min-width: 0; min-height: 44px; grid-template-columns: clamp(2.6rem, 6.3vmin, 4rem) minmax(0, 1fr); align-items: center; gap: 0.25rem; padding: 0.15rem; border: 1px solid #b7aa8d; border-radius: 0.6rem; background: #f5ead3; color: #183a37; font-size: clamp(0.56rem, 1.1vmin, 0.76rem); text-align: left; }
+  .rail-token { display: grid; min-width: 0; min-height: 44px; grid-template-rows: minmax(0, 1fr) auto; place-items: center; gap: 0.1rem; padding: 0.15rem; overflow: visible; border: 1px solid #b7aa8d; border-radius: 0.6rem; background: #f5ead3; color: #183a37; font-size: clamp(0.56rem, 1.1vmin, 0.76rem); text-align: center; }
   .rail-token:disabled { opacity: 0.72; }
-  .rail-chip { display: grid; place-items: center; }
-  .rail-chip :global(.token-chip) { width: clamp(2.5rem, 6vmin, 3.8rem); height: clamp(2.5rem, 6vmin, 3.8rem); }
+  .rail-chip { display: grid; width: 100%; min-width: 0; place-items: center; }
+  .rail-chip :global(.token-stack) {
+    --token-stack-chip-size: clamp(2.4rem, 4.5vmin, 2.8rem);
+    --token-stack-step: clamp(0.82rem, 1.55vmin, 1rem);
+  }
   .empty-rail { align-self: center; font-size: 0.8rem; text-align: center; }
   .top-log, .bottom-log { position: fixed; z-index: 20; }
   .top-log { top: 0.75rem; left: 0.75rem; transform: rotate(180deg); }
