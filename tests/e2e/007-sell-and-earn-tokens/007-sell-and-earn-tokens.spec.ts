@@ -64,9 +64,7 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
   const spiceSupply = page.locator('.token.spice');
   const initialSpiceTokens = spiceSupply.locator('.supply-token');
   await expect(initialSpiceTokens).toHaveCount(7);
-  await expect(initialSpiceTokens.locator('.token-chip-center')).toHaveText([
-    '5', '3', '3', '2', '2', '1', '1'
-  ]);
+  await expect(initialSpiceTokens.locator('.token-chip-center')).toHaveCount(0);
   await expect(initialSpiceTokens.locator('.token-chip-rim')).toHaveText([
     '5', '3', '3', '2', '2', '1', '1'
   ]);
@@ -85,20 +83,22 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
   expect(secondRimBox).not.toBeNull();
   expect(Math.abs(secondTokenBox!.x - tokenBox!.x)).toBeLessThanOrEqual(1);
   expect(secondRimBox!.y - firstRimBox!.y).toBeGreaterThanOrEqual(firstRimBox!.height - 1);
-  const centerValueStyle = await initialSpiceTokens.first().locator('.token-chip-center').evaluate(
+  const rimValueStyle = await initialSpiceTokens.first().locator('.token-chip-rim').evaluate(
     (value) => {
       const style = getComputedStyle(value);
       return {
         backgroundColor: style.backgroundColor,
+        color: style.color,
         fontSize: parseFloat(style.fontSize),
         strokeWidth: parseFloat(style.webkitTextStrokeWidth)
       };
     }
   );
-  expect(centerValueStyle.backgroundColor).toBe('rgba(0, 0, 0, 0)');
-  expect(centerValueStyle.fontSize).toBeGreaterThanOrEqual(30);
-  expect(centerValueStyle.fontSize).toBeLessThan(38);
-  expect(centerValueStyle.strokeWidth).toBeGreaterThan(0);
+  expect(rimValueStyle.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+  expect(rimValueStyle.color).toBe('rgb(255, 251, 234)');
+  expect(rimValueStyle.fontSize).toBeGreaterThanOrEqual(11.5);
+  expect(rimValueStyle.fontSize).toBeLessThan(15);
+  expect(rimValueStyle.strokeWidth).toBeGreaterThan(0);
   const firstSpiceId = await initialSpiceTokens.first().getAttribute('data-supply-token-id');
   const firstSpiceBox = await initialSpiceTokens.first().boundingBox();
   const firstZ = Number(await initialSpiceTokens.first().evaluate(
@@ -184,7 +184,7 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
         spec: 'The public spice supply loses its three highest tokens',
         check: async () => {
           await expect(spiceSupply).toContainText('4 left');
-          await expect(spiceSupply.locator('.supply-token .token-chip-center')).toHaveText([
+          await expect(spiceSupply.locator('.supply-token .token-chip-rim')).toHaveText([
             '2', '2', '1', '1'
           ]);
         }

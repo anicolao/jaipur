@@ -34,7 +34,6 @@
     alt=""
     draggable="false"
   />
-  <span class="token-chip-center">{hidden ? '?' : token.value}</span>
   <span class="token-chip-rim">{rimLabel(token.kind, token.value)}</span>
 </span>
 
@@ -74,16 +73,6 @@
     opacity: 0.94;
     object-fit: cover;
   }
-  .token-chip-center {
-    z-index: 1;
-    color: #fffbea;
-    font-size: min(2.16rem, 70.4cqi);
-    font-weight: 700;
-    line-height: 1;
-    paint-order: stroke fill;
-    text-shadow: 0 1px 1px rgb(0 0 0 / 72%);
-    -webkit-text-stroke: 0.035em #07110f;
-  }
   .token-chip-rim {
     position: absolute;
     z-index: 3;
@@ -96,14 +85,16 @@
     padding: 0;
     place-items: center;
     border-radius: 50%;
-    background: #f8e7b7;
-    color: #183a37;
+    background: transparent;
+    color: #fffbea;
     font-size: clamp(0.72rem, 30cqi, 0.84rem);
     font-weight: 700;
     line-height: 1;
     text-align: center;
-    text-shadow: none;
+    paint-order: stroke fill;
+    text-shadow: 0 1px 1px rgb(0 0 0 / 72%);
     transform: translateX(-50%);
+    -webkit-text-stroke: 0.035em #07110f;
   }
   .token-chip.hidden .token-chip-image {
     opacity: 0.94;
