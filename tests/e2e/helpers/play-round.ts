@@ -58,6 +58,14 @@ export async function playRoundToCompletion(
       }
     }
     active = active === host ? rival : host;
+    await expect(
+      active.locator('.market .card-action, .score-review, .action-card-flight').first()
+    ).toBeVisible();
+    await active.locator('.action-card-flight').evaluateAll((flights) => {
+      for (const flight of flights) {
+        for (const animation of flight.getAnimations()) animation.finish();
+      }
+    });
     await expect(active.locator('.market .card-action, .score-review').first()).toBeVisible();
   }
   throw new Error(`Round did not finish within ${limit} ordinary UI actions`);
