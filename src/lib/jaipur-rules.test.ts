@@ -59,12 +59,17 @@ describe('taking one good', () => {
     ];
     const before = reduceGame(setupEvents);
     const card = legalSingleGoods(before.round!, 'a')[0];
+    const marketBefore = before.round!.market.map(({ id }) => id);
+    const takenSlot = marketBefore.indexOf(card.id);
     const after = reduceGame([
       ...setupEvents,
       base('a-4', 'cards/taken-one', 'a', { cardId: card.id })
     ]);
     expect(after.round?.hands.a).toContainEqual(card);
     expect(after.round?.market).toHaveLength(5);
+    expect(after.round?.market[takenSlot].id).not.toBe(card.id);
+    expect(after.round?.market.map(({ id }) => id).filter((_, index) => index !== takenSlot))
+      .toEqual(marketBefore.filter((_, index) => index !== takenSlot));
     expect(after.round?.activeUid).toBe('b');
     expect(cardCount(after.round!)).toBe(55);
     expect(after.activity.at(-1)).toEqual({
@@ -180,23 +185,86 @@ describe('taking one good', () => {
 
 describe('taking camels', () => {
   it('takes every market camel into the herd and refills every vacancy', () => {
-    const round = setupRound(['a', 'b'], 'camel-day', 'a');
-    const camelCount = round.market.filter(({ kind }) => kind === 'camel').length;
-    const herdBefore = round.herds.a.length;
-    const deckBefore = round.deck.length;
-    round.market = round.market.filter(({ kind }) => kind !== 'camel');
-    round.herds.a.push(...Array.from({ length: camelCount }, (_, index) => ({
-      id: `taken-${index}`,
-      kind: 'camel' as const
-    })));
-    while (round.market.length < 5) round.market.push(round.deck.shift()!);
-    expect(round.herds.a).toHaveLength(herdBefore + camelCount);
-    expect(round.deck).toHaveLength(deckBefore - camelCount);
-    expect(round.market).toHaveLength(5);
+    const base = (id: string, type: GameEvent['type'], actorUid: string, payload: Record<string, unknown>): GameEvent => ({
+      id,
+      type,
+      actorUid,
+      payload,
+      clientSeq: 1,
+      createdAtMillis: 1,
+      schemaVersion: 1,
+      reducerVersion: 1
+    });
+    const setupEvents: GameEvent[] = [
+      base('a-1', 'game/created', 'a', { gameId: 'g', displayName: 'A' }),
+      base('b-1', 'player/joined', 'b', { displayName: 'B' }),
+      base('a-2', 'player/ready', 'a', { ready: true }),
+      base('b-2', 'player/ready', 'b', { ready: true }),
+      base('a-3', 'round/started', 'a', { seed: 'camel-day', starterUid: 'a' })
+    ];
+    const before = reduceGame(setupEvents);
+    const marketBefore = before.round!.market;
+    const camelSlots = marketBefore.flatMap((card, index) => card.kind === 'camel' ? [index] : []);
+    const herdBefore = before.round!.herds.a.length;
+    const deckBefore = before.round!.deck.length;
+    const after = reduceGame([
+      ...setupEvents,
+      base('a-4', 'cards/taken-camels', 'a', {})
+    ]);
+    expect(after.round!.herds.a).toHaveLength(herdBefore + camelSlots.length);
+    expect(after.round!.deck).toHaveLength(deckBefore - camelSlots.length);
+    expect(after.round!.market).toHaveLength(5);
+    for (const [index, card] of marketBefore.entries()) {
+      if (card.kind === 'camel') {
+        expect(after.round!.market[index].id).not.toBe(card.id);
+      } else {
+        expect(after.round!.market[index]).toEqual(card);
+      }
+    }
   });
 });
 
 describe('exchanging goods', () => {
+  it('replaces each chosen market slot with its paired return card', () => {
+    const base = (id: string, type: GameEvent['type'], actorUid: string, payload: Record<string, unknown>): GameEvent => ({
+      id,
+      type,
+      actorUid,
+      payload,
+      clientSeq: 1,
+      createdAtMillis: 1,
+      schemaVersion: 1,
+      reducerVersion: 1
+    });
+    const setupEvents: GameEvent[] = [
+      base('a-1', 'game/created', 'a', { gameId: 'g', displayName: 'A' }),
+      base('b-1', 'player/joined', 'b', { displayName: 'B' }),
+      base('a-2', 'player/ready', 'a', { ready: true }),
+      base('b-2', 'player/ready', 'b', { ready: true }),
+      base('a-3', 'round/started', 'a', { seed: 'exchange-day', starterUid: 'a' })
+    ];
+    const before = reduceGame(setupEvents);
+    const marketBefore = before.round!.market;
+    const takenIds = marketBefore.filter(({ kind }) => kind !== 'camel').map(({ id }) => id);
+    const returnedIds = [...before.round!.herds.a, ...before.round!.hands.a]
+      .filter((card) => !marketBefore.some(({ kind }) => kind === card.kind))
+      .slice(0, takenIds.length)
+      .map(({ id }) => id);
+    expect(isLegalExchange(before.round!, 'a', takenIds, returnedIds)).toBe(true);
+
+    const after = reduceGame([
+      ...setupEvents,
+      base('a-4', 'cards/exchanged', 'a', { takenCardIds: takenIds, returnedCardIds: returnedIds })
+    ]);
+
+    expect(after.round!.market.map(({ id }) => id)).toEqual(
+      marketBefore.map((card) => {
+        const exchangedIndex = takenIds.indexOf(card.id);
+        return exchangedIndex >= 0 ? returnedIds[exchangedIndex] : card.id;
+      })
+    );
+  });
+
   it('accepts an equal multi-card exchange and rejects every structural violation', () => {
     const round = setupRound(['a', 'b'], 'exchange-day', 'a');
     const goods = round.market.filter(({ kind }) => kind !== 'camel');

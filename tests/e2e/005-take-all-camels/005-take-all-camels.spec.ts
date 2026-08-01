@@ -18,6 +18,12 @@ test('the active trader takes every camel as one action', async ({ browser, page
   const camelCount = await page.locator('.market .camel').count();
   const herdBefore = await page.locator('.own-herd .own-camel-card').count();
   const deckBefore = Number(await page.getByText('Deck').locator('..').locator('strong').textContent());
+  const marketBefore = await page.locator('.market-slot [data-card-id]').evaluateAll(
+    (cards) => cards.map((card) => card.getAttribute('data-card-id'))
+  );
+  const camelSlots = await page.locator('.market-slot:has(.camel)').evaluateAll(
+    (slots) => slots.map((slot) => Number(slot.getAttribute('data-market-slot-index')))
+  );
   await page
     .getByRole('button', { name: new RegExp(`Take all ${camelCount} camels`) })
     .first()
@@ -63,6 +69,16 @@ test('the active trader takes every camel as one action', async ({ browser, page
           await expect(page.getByText('Deck').locator('..')).toContainText(
             String(deckBefore - camelCount)
           );
+          const marketAfter = await page.locator('.market-slot [data-card-id]').evaluateAll(
+            (cards) => cards.map((card) => card.getAttribute('data-card-id'))
+          );
+          for (const index of marketBefore.keys()) {
+            if (camelSlots.includes(index)) {
+              expect(marketAfter[index]).not.toBe(marketBefore[index]);
+            } else {
+              expect(marketAfter[index]).toBe(marketBefore[index]);
+            }
+          }
         }
       },
       {

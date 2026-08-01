@@ -662,10 +662,10 @@
     </header>
     {#if lobby.round?.status === 'active'}
       <div class="market-cards">
-        {#each lobby.round.market as card}
+        {#each lobby.round.market as card, marketIndex (marketIndex)}
           {@const activeUid = lobby.round.activeUid}
           {@const loadedReturnId = exchangeLoads(activeUid)[card.id]}
-          <div class="table-market-slot">
+          <div class="table-market-slot" data-market-slot-index={marketIndex}>
             <button
               type="button"
               class="market-card"
