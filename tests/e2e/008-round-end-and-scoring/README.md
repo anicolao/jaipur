@@ -2,9 +2,9 @@
 
 Both traders complete an ordinary full round, reveal its exact score, and open a fresh market for the loser.
 
-## The round ends and reveals its score after 61 ordinary actions
+## The round ends and reveals its score after 65 ordinary actions
 
-![The round ends and reveals its score after 61 ordinary actions](./screenshots/000-round-scored-desktop.png)
+![The round ends and reveals its score after 65 ordinary actions](./screenshots/000-round-scored-desktop.png)
 
 **Verifications:**
 

@@ -1118,7 +1118,7 @@
   }
 
   function ownedTokenStyle(index: number, count: number): string {
-    const step = count <= 1 ? 0 : Math.min(0.68, 5.2 / (count - 1));
+    const step = count <= 1 ? 0 : Math.min(0.82, 6.2 / (count - 1));
     const rotation = [-5, 3, -2, 5, -3, 2][index % 6];
     return `--owned-x: ${(index * step).toFixed(2)}rem; --owned-rotation: ${rotation}deg; z-index: ${index + 1}`;
   }
@@ -1126,7 +1126,7 @@
   function ownedTokenSpan(playerUid: string): string {
     const count = allOwnedTokens(playerUid).length;
     if (count <= 1) return '0rem';
-    return `${Math.min(5.2, (count - 1) * 0.68).toFixed(2)}rem`;
+    return `${Math.min(6.2, (count - 1) * 0.82).toFixed(2)}rem`;
   }
 
   function tokenStackDescription(kind: Good): string {
@@ -3091,7 +3091,7 @@
   }
   .token-area {
     --supply-chip-size: clamp(3rem, 8vmin, 3.75rem);
-    --supply-chip-step: clamp(0.12rem, 0.32vmin, 0.2rem);
+    --supply-chip-step: clamp(0.26rem, 0.75vmin, 0.45rem);
     display: grid;
     min-width: 0;
     grid-area: tokens;
@@ -3211,7 +3211,10 @@
     top: calc(var(--supply-chip-size) - 0.8rem);
     left: 50%;
     display: grid;
-    width: min(100%, calc(var(--edge-count) * 0.85rem));
+    width: min(
+      calc(100% + 0.8rem),
+      calc(var(--supply-chip-size) + (var(--edge-count) - 1) * var(--supply-chip-step))
+    );
     height: 0.92rem;
     grid-template-columns: repeat(var(--edge-count), minmax(0, 1fr));
     filter: drop-shadow(0 0.08rem 0.08rem rgb(24 58 55 / 34%));
@@ -3639,7 +3642,7 @@
     }
     .token {
       --supply-chip-size: 2.55rem;
-      --supply-chip-step: 0.09rem;
+      --supply-chip-step: 0.22rem;
     }
     .own-token-tray > span:last-child {
       display: none;

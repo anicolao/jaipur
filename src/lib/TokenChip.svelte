@@ -77,7 +77,7 @@
   .token-chip-center {
     z-index: 1;
     color: #fffbea;
-    font-size: min(2.7rem, 88cqi);
+    font-size: min(2.16rem, 70.4cqi);
     font-weight: 700;
     line-height: 1;
     paint-order: stroke fill;
