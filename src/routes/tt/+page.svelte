@@ -23,14 +23,10 @@
     type Card,
     type GameState,
     type Good,
+    type PendingDraw,
     type Token
   } from '$lib/jaipur-rules';
   import { generateRoomCode } from '$lib/room-code';
-  import {
-    beginPendingDraw,
-    pendingDrawIsCurrent,
-    type PendingDraw
-  } from '$lib/pending-draw';
 
   type Seat = 1 | 2;
   type SeatQr = { seat: Seat; url: string; image: string };
@@ -75,7 +71,7 @@
     delay: number;
   }>>([]);
   let busy = $state(false);
-  let pendingDraw = $state<PendingDraw | null>(null);
+  let pendingDraw = $derived<PendingDraw | null>(lobby.pendingDraw);
 
   const componentImage = (kind: Good | 'camel' | 'seal' | 'card-back') =>
     `${base}/components/${kind}.webp`;
@@ -117,9 +113,6 @@
           const newActivities = repositoryReady
             ? next.activity.filter(({ id }) => !knownActivityIds.has(id))
             : [];
-          if (pendingDraw && !busy && !pendingDrawIsCurrent(pendingDraw, next.round)) {
-            pendingDraw = null;
-          }
           lobby = next;
           for (const activity of next.activity) knownActivityIds.add(activity.id);
           repositoryReady = true;
@@ -166,6 +159,8 @@
       case 'player/joined': return 'joined the table';
       case 'player/ready': return activity.ready ? 'is ready' : 'is no longer ready';
       case 'round/started': return `opened round ${activity.roundNumber ?? ''}`;
+      case 'cards/draw-initiated': return 'started a draw';
+      case 'cards/draw-abandoned': return 'cancelled a draw';
       case 'cards/taken-one': return `took ${kinds[0] ?? 'a good'}`;
       case 'cards/taken-camels': return `took all ${count} ${count === 1 ? 'camel' : 'camels'}`;
       case 'cards/exchanged': return `traded ${count} for ${count}`;
@@ -234,28 +229,25 @@
     });
   }
 
-  function chooseMarket(card: Card) {
+  async function chooseMarket(card: Card) {
     if (!lobby.round || pendingDraw || busy) return;
-    pendingDraw = beginPendingDraw(lobby.round, card);
+    await appendFor(lobby.round.activeUid, 'cards/draw-initiated', { cardId: card.id });
   }
 
-  function abandonPendingDraw() {
-    if (busy) return;
-    pendingDraw = null;
+  async function abandonPendingDraw() {
+    const draw = pendingDraw;
+    if (!draw || busy) return;
+    await appendFor(draw.activeUid, 'cards/draw-abandoned', {});
   }
 
   async function confirmPendingDraw() {
     const draw = pendingDraw;
-    if (!draw || !pendingDrawIsCurrent(draw, lobby.round)) {
-      pendingDraw = null;
-      return;
-    }
+    if (!draw) return;
     if (draw.kind === 'camels') {
       await appendFor(draw.activeUid, 'cards/taken-camels', {});
     } else {
       await appendFor(draw.activeUid, 'cards/taken-one', { cardId: draw.cardIds[0] });
     }
-    pendingDraw = null;
   }
 
   function isPendingDrawCard(cardId: string): boolean {

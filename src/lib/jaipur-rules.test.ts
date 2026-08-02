@@ -38,6 +38,115 @@ describe('deterministic Jaipur setup', () => {
   });
 });
 
+describe('persisted draw previews', () => {
+  const event = (
+    id: string,
+    type: GameEvent['type'],
+    actorUid: string,
+    payload: Record<string, unknown>
+  ): GameEvent => ({
+    id,
+    type,
+    actorUid,
+    payload,
+    clientSeq: Number(id.match(/\d+/)?.[0] ?? 1),
+    createdAtMillis: 1,
+    schemaVersion: 1,
+    reducerVersion: 1
+  });
+  const setupEvents = () => [
+    event('a-1', 'game/created', 'a', { gameId: 'preview', displayName: 'A' }),
+    event('b-1', 'player/joined', 'b', { displayName: 'B' }),
+    event('a-2', 'player/ready', 'a', { ready: true }),
+    event('b-2', 'player/ready', 'b', { ready: true }),
+    event('a-3', 'round/started', 'a', { seed: 'preview', starterUid: 'a' })
+  ];
+
+  it('projects initiation and abandonment without changing Jaipur rules state', () => {
+    const setup = setupEvents();
+    const before = reduceGame(setup);
+    const card = legalSingleGoods(before.round!, 'a')[0];
+    const initiated = event('a-4', 'cards/draw-initiated', 'a', {
+      cardId: card.id,
+      roundNumber: 1,
+      turnNumber: 1
+    });
+    const previewed = reduceGame([...setup, initiated]);
+
+    expect(previewed.pendingDraw).toEqual({
+      kind: 'one',
+      cardIds: [card.id],
+      activeUid: 'a',
+      roundNumber: 1,
+      turnNumber: 1
+    });
+    expect(previewed.round).toEqual(before.round);
+    expect(previewed.activity).toEqual(before.activity);
+
+    const abandoned = reduceGame([
+      ...setup,
+      initiated,
+      event('a-5', 'cards/draw-abandoned', 'a', { roundNumber: 1, turnNumber: 1 })
+    ]);
+    expect(abandoned.pendingDraw).toBeNull();
+    expect(abandoned.round).toEqual(before.round);
+    expect(abandoned.activity).toEqual(before.activity);
+  });
+
+  it('shares every staged camel and permits only the matching confirmation', () => {
+    const setup = setupEvents();
+    const before = reduceGame(setup);
+    const camel = before.round!.market.find(({ kind }) => kind === 'camel')!;
+    const initiated = event('a-4', 'cards/draw-initiated', 'a', {
+      cardId: camel.id,
+      roundNumber: 1,
+      turnNumber: 1
+    });
+    const previewed = reduceGame([...setup, initiated]);
+    const camelIds = before.round!.market
+      .filter(({ kind }) => kind === 'camel')
+      .map(({ id }) => id);
+
+    expect(previewed.pendingDraw).toMatchObject({ kind: 'camels', cardIds: camelIds });
+
+    const mismatched = reduceGame([
+      ...setup,
+      initiated,
+      event('a-5', 'cards/taken-one', 'a', {
+        cardId: legalSingleGoods(before.round!, 'a')[0].id,
+        roundNumber: 1,
+        turnNumber: 1
+      })
+    ]);
+    expect(mismatched.pendingDraw).toEqual(previewed.pendingDraw);
+    expect(mismatched.round).toEqual(before.round);
+    expect(mismatched.diagnostics).toContain('a-5: invalid single-good take');
+
+    const blocked = reduceGame([
+      ...setup,
+      initiated,
+      event('a-6', 'cards/exchanged', 'a', {
+        takenCardIds: [],
+        returnedCardIds: [],
+        roundNumber: 1,
+        turnNumber: 1
+      })
+    ]);
+    expect(blocked.pendingDraw).toEqual(previewed.pendingDraw);
+    expect(blocked.round).toEqual(before.round);
+    expect(blocked.diagnostics).toContain('a-6: action while draw pending');
+
+    const confirmed = reduceGame([
+      ...setup,
+      initiated,
+      event('a-7', 'cards/taken-camels', 'a', { roundNumber: 1, turnNumber: 1 })
+    ]);
+    expect(confirmed.pendingDraw).toBeNull();
+    expect(confirmed.round?.activeUid).toBe('b');
+    expect(confirmed.round?.herds.a).toHaveLength(before.round!.herds.a.length + camelIds.length);
+  });
+});
+
 describe('taking one good', () => {
   it('moves a market good to the active hand, refills, and advances the turn', () => {
     const base = (id: string, type: GameEvent['type'], actorUid: string, payload: Record<string, unknown>): GameEvent => ({

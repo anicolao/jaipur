@@ -68,6 +68,15 @@ export interface GameState extends LobbyState {
   winnerUid: string | null;
   epoch: number;
   tabletopIntents: Record<string, TabletopIntent>;
+  pendingDraw: PendingDraw | null;
+}
+
+export interface PendingDraw {
+  kind: 'one' | 'camels';
+  cardIds: string[];
+  activeUid: string;
+  roundNumber: number;
+  turnNumber: number;
 }
 
 export interface TabletopIntent {
@@ -280,6 +289,7 @@ export function reduceGame(events: GameEvent[]): GameState {
   let winnerUid: string | null = null;
   let epoch = 1;
   const tabletopIntents: Record<string, TabletopIntent> = {};
+  let pendingDraw: PendingDraw | null = null;
 
   const actionActorUid = (event: GameEvent): string => {
     const requestedPlayerUid = event.payload.playerUid;
@@ -296,6 +306,7 @@ export function reduceGame(events: GameEvent[]): GameState {
 
   const finishAction = (actorUid: string): Pick<GameActivity, 'roundWinnerUid' | 'gameWinnerUid'> => {
     if (!round) return {};
+    pendingDraw = null;
     delete tabletopIntents[actorUid];
     round.activeUid = playerUids.find((uid) => uid !== actorUid) ?? round.activeUid;
     round.turnNumber += 1;
@@ -332,6 +343,7 @@ export function reduceGame(events: GameEvent[]): GameState {
         continue;
       }
       round = null;
+      pendingDraw = null;
       rounds.length = 0;
       for (const uid of playerUids) seals[uid] = 0;
       winnerUid = null;
@@ -368,6 +380,7 @@ export function reduceGame(events: GameEvent[]): GameState {
       );
       round.number = rounds.length + 1;
       rounds.push(round);
+      pendingDraw = null;
       for (const uid of playerUids) delete tabletopIntents[uid];
       lobby.activity.push({
         id: event.id,
@@ -398,6 +411,7 @@ export function reduceGame(events: GameEvent[]): GameState {
       if (
         lobby.mode !== 'tabletop' ||
         round.status !== 'active' ||
+        pendingDraw !== null ||
         actorUid !== round.activeUid ||
         event.payload.roundNumber !== round.number ||
         event.payload.turnNumber !== round.turnNumber ||
@@ -435,6 +449,62 @@ export function reduceGame(events: GameEvent[]): GameState {
       lobby.diagnostics.push(`${event.id}: stale round or turn`);
       continue;
     }
+    if (event.type === 'cards/draw-initiated') {
+      const actorUid = actionActorUid(event);
+      const cardId = event.payload.cardId;
+      const card = typeof cardId === 'string'
+        ? round.market.find(({ id }) => id === cardId)
+        : undefined;
+      const hand = round.hands[actorUid];
+      if (
+        pendingDraw ||
+        actorUid !== round.activeUid ||
+        event.payload.roundNumber !== round.number ||
+        event.payload.turnNumber !== round.turnNumber ||
+        !card ||
+        !hand ||
+        (card.kind !== 'camel' && hand.length >= 7)
+      ) {
+        lobby.diagnostics.push(`${event.id}: invalid draw initiation`);
+        continue;
+      }
+      const cardIds = card.kind === 'camel'
+        ? round.market.filter(({ kind }) => kind === 'camel').map(({ id }) => id)
+        : [card.id];
+      pendingDraw = {
+        kind: card.kind === 'camel' ? 'camels' : 'one',
+        cardIds,
+        activeUid: actorUid,
+        roundNumber: round.number,
+        turnNumber: round.turnNumber
+      };
+      continue;
+    }
+
+    if (event.type === 'cards/draw-abandoned') {
+      const actorUid = actionActorUid(event);
+      if (
+        !pendingDraw ||
+        actorUid !== pendingDraw.activeUid ||
+        event.payload.roundNumber !== pendingDraw.roundNumber ||
+        event.payload.turnNumber !== pendingDraw.turnNumber
+      ) {
+        lobby.diagnostics.push(`${event.id}: invalid draw abandonment`);
+        continue;
+      }
+      pendingDraw = null;
+      continue;
+    }
+
+    if (
+      pendingDraw &&
+      event.type.startsWith('cards/') &&
+      event.type !== 'cards/taken-one' &&
+      event.type !== 'cards/taken-camels'
+    ) {
+      lobby.diagnostics.push(`${event.id}: action while draw pending`);
+      continue;
+    }
     if (event.type === 'cards/taken-one') {
       const actorUid = actionActorUid(event);
       const cardId = event.payload.cardId;
@@ -446,7 +516,14 @@ export function reduceGame(events: GameEvent[]): GameState {
         marketIndex < 0 ||
         round.market[marketIndex].kind === 'camel' ||
         !hand ||
-        hand.length >= 7
+        hand.length >= 7 ||
+        (pendingDraw !== null && (
+          pendingDraw.kind !== 'one' ||
+          pendingDraw.activeUid !== actorUid ||
+          event.payload.roundNumber !== pendingDraw.roundNumber ||
+          event.payload.turnNumber !== pendingDraw.turnNumber ||
+          pendingDraw.cardIds[0] !== cardId
+        ))
       ) {
         lobby.diagnostics.push(`${event.id}: invalid single-good take`);
         continue;
@@ -472,7 +549,18 @@ export function reduceGame(events: GameEvent[]): GameState {
     if (event.type === 'cards/taken-camels') {
       const actorUid = actionActorUid(event);
       const camels = round.market.filter(({ kind }) => kind === 'camel');
-      if (actorUid !== round.activeUid || camels.length === 0) {
+      if (
+        actorUid !== round.activeUid ||
+        camels.length === 0 ||
+        (pendingDraw !== null && (
+          pendingDraw.kind !== 'camels' ||
+          pendingDraw.activeUid !== actorUid ||
+          event.payload.roundNumber !== pendingDraw.roundNumber ||
+          event.payload.turnNumber !== pendingDraw.turnNumber ||
+          pendingDraw.cardIds.length !== camels.length ||
+          !pendingDraw.cardIds.every((id, index) => id === camels[index].id)
+        ))
+      ) {
         lobby.diagnostics.push(`${event.id}: invalid camel take`);
         continue;
       }
@@ -584,7 +672,7 @@ export function reduceGame(events: GameEvent[]): GameState {
   lobby.activity.sort(
     (left, right) => (eventOrder.get(left.id) ?? 0) - (eventOrder.get(right.id) ?? 0)
   );
-  return { ...lobby, round, rounds, seals, winnerUid, epoch, tabletopIntents };
+  return { ...lobby, round, rounds, seals, winnerUid, epoch, tabletopIntents, pendingDraw };
 }
 
 export function legalSingleGoods(round: RoundState, uid: string): Card[] {

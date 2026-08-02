@@ -24,7 +24,8 @@
 
   const componentImage = (kind: 'card-back' | 'camel') => `${base}/components/${kind}.webp`;
   const player = () => game.players.find((candidate) => candidate.uid === uid);
-  const isActive = () => game.round?.status === 'active' && game.round.activeUid === uid;
+  const isActive = () =>
+    game.round?.status === 'active' && game.round.activeUid === uid && !game.pendingDraw;
   const intent = () => game.tabletopIntents[uid] ?? { selectedReturnIds: [], exchangeLoads: {} };
   const loadedReturnIds = () => Object.values(intent().exchangeLoads);
   const selectedReturnIds = () => intent().selectedReturnIds;
@@ -159,7 +160,11 @@
     <section class="selection-summary" aria-live="polite">
       <div>
         <span>{game.round.hands[uid]?.length ?? 0} / 7 cards</span>
-        <strong>{selectedCount()} selected for the table</strong>
+        {#if game.pendingDraw}
+          <strong data-pending-draw={game.pendingDraw.kind}>Draw awaiting confirmation on the table</strong>
+        {:else}
+          <strong>{selectedCount()} selected for the table</strong>
+        {/if}
         <span>{loadedReturnIds().length} placed face-down</span>
       </div>
       <button type="button" disabled={!isActive() || selectedCount() === 0 || busy} onclick={() => publishIntent([])}>
