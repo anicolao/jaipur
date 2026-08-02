@@ -356,8 +356,37 @@ existing repository connection and appears in the ordinary log and replay as
 a Maharaja action.
 
 The privacy counterfactual and production-legality tests are included now.
-Fast simulation, determinization, IS-MCTS, tournament measurement, and the Web
-Worker deadline/cancellation boundary remain subsequent milestones. The
-bounded Apprentice heuristic runs synchronously for this first implementation;
-search must move into the proposed worker before its computational budget is
-increased.
+That initial milestone deliberately stopped before simulation, determinization,
+search, tournament measurement, and a Web Worker boundary. The bounded
+Apprentice heuristic remains synchronous and frozen as the baseline described
+there; the stronger follow-up below adds computation without changing it.
+
+## Strong difficulty added in this branch
+
+The branch now also offers **Maharaja** as an alternative to the frozen
+Apprentice policy. Maharaja keeps the same restricted `BotObservation` and
+never receives the opponent's hand, deck order, or hidden bonus values. For
+each decision it reconstructs the remaining component multiset, samples
+opponent hands, deck orders, and bonus values consistent with public
+information, and evaluates a diverse shortlist of legal moves against paired
+determinizations. Each candidate receives the same sampled hidden position and
+a full-round heuristic rollout for both traders, so comparisons are less noisy
+than independent rollouts.
+
+Search runs in a dedicated Web Worker with a fixed simulation cap and a
+wall-clock safety limit. Obsolete searches are terminated when the turn,
+connection, round, or replay changes; a deterministic Apprentice choice is the
+fallback if the worker fails or exceeds its outer timeout. The selected
+difficulty and engine version are persisted in `bot/added`, while only the
+ordinary chosen card action enters replay.
+
+The sampler seed is derived from action-relevant observable state rather than
+the anonymous Firebase UID, so replaying the same position produces the same
+search and move on different clients and test runs.
+
+This is an information-set Monte Carlo rollout policy, not yet the deeper
+shared-tree IS-MCTS described above. A deterministic paired-seed regression
+tournament currently has Maharaja winning 7 of 8 held-out rounds against the
+frozen Apprentice at the reduced CI search budget. A shared information-set
+tree and broader tournament tuning remain the next avenues for increasing
+strength without expanding the bot's information privileges.

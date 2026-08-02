@@ -58,13 +58,15 @@ export interface LobbyState {
   mode: 'standard' | 'tabletop' | 'bot';
   bot: {
     uid: string;
-    difficulty: 'apprentice';
+    difficulty: BotDifficulty;
     engineVersion: number;
   } | null;
   players: Player[];
   activity: GameActivity[];
   diagnostics: string[];
 }
+
+export type BotDifficulty = 'apprentice' | 'maharaja';
 
 export const EMPTY_LOBBY: LobbyState = {
   gameId: null,
@@ -134,6 +136,8 @@ export function reduceLobby(events: GameEvent[]): LobbyState {
     if (event.type === 'bot/added') {
       const displayName = nameFrom(event);
       const botUid = event.payload.botUid;
+      const difficulty = event.payload.difficulty;
+      const engineVersion = event.payload.engineVersion;
       if (
         event.actorUid !== state.hostUid ||
         state.mode !== 'standard' ||
@@ -143,8 +147,9 @@ export function reduceLobby(events: GameEvent[]): LobbyState {
         botUid.length < 1 ||
         botUid.length > 128 ||
         botUid === event.actorUid ||
-        event.payload.difficulty !== 'apprentice' ||
-        event.payload.engineVersion !== 1
+        (difficulty !== 'apprentice' && difficulty !== 'maharaja') ||
+        (difficulty === 'apprentice' && engineVersion !== 1) ||
+        (difficulty === 'maharaja' && engineVersion !== 2)
       ) {
         state.diagnostics.push(`${event.id}: invalid bot seat`);
         continue;
@@ -152,8 +157,8 @@ export function reduceLobby(events: GameEvent[]): LobbyState {
       state.mode = 'bot';
       state.bot = {
         uid: botUid,
-        difficulty: 'apprentice',
-        engineVersion: 1
+        difficulty,
+        engineVersion: difficulty === 'maharaja' ? 2 : 1
       };
       state.players.push({ uid: botUid, displayName, ready: true, seat: 2 });
       state.activity.push({

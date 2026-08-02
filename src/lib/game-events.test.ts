@@ -106,6 +106,40 @@ describe('lobby reducer', () => {
     });
   });
 
+  it('persists the stronger Maharaja engine as an alternative difficulty', () => {
+    const state = reduceLobby([
+      event('a-1', 'game/created', 'a', { gameId: 'market', displayName: 'Asha' }),
+      event('a-2', 'bot/added', 'a', {
+        botUid: 'bot-a',
+        displayName: 'Maharaja',
+        difficulty: 'maharaja',
+        engineVersion: 2
+      })
+    ]);
+
+    expect(state.bot).toEqual({
+      uid: 'bot-a',
+      difficulty: 'maharaja',
+      engineVersion: 2
+    });
+    expect(state.diagnostics).toEqual([]);
+  });
+
+  it('rejects a difficulty paired with the wrong engine version', () => {
+    const state = reduceLobby([
+      event('a-1', 'game/created', 'a', { gameId: 'market', displayName: 'Asha' }),
+      event('a-2', 'bot/added', 'a', {
+        botUid: 'bot-a',
+        displayName: 'Maharaja',
+        difficulty: 'maharaja',
+        engineVersion: 1
+      })
+    ]);
+
+    expect(state.bot).toBeNull();
+    expect(state.diagnostics).toEqual(['a-2: invalid bot seat']);
+  });
+
   it('rejects bot seats added by a non-host or after the room is full', () => {
     const state = reduceLobby([
       event('a-1', 'game/created', 'a', { gameId: 'market', displayName: 'Asha' }),
@@ -121,6 +155,12 @@ describe('lobby reducer', () => {
         displayName: 'Maharaja',
         difficulty: 'apprentice',
         engineVersion: 1
+      }),
+      event('a-3', 'bot/added', 'a', {
+        botUid: 'bot-a',
+        displayName: 'Maharaja',
+        difficulty: 'maharaja',
+        engineVersion: 1
       })
     ]);
 
@@ -129,7 +169,8 @@ describe('lobby reducer', () => {
     expect(state.players.map(({ uid }) => uid)).toEqual(['a', 'b']);
     expect(state.diagnostics).toEqual([
       'b-1: invalid bot seat',
-      'a-2: invalid bot seat'
+      'a-2: invalid bot seat',
+      'a-3: invalid bot seat'
     ]);
   });
 });

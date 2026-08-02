@@ -2,12 +2,12 @@ import { expect, test } from '@playwright/test';
 import { e2eRoomCode } from '../helpers/room-code';
 import { TestStepHelper } from '../helpers/test-step-helper';
 
-test('one client creates and plays against a computer opponent', async ({ page }, testInfo) => {
+test('one client creates and plays against the strongest computer opponent', async ({ page }, testInfo) => {
   const gameId = e2eRoomCode(`bot-013-${testInfo.project.name}`);
   const steps = new TestStepHelper(page, testInfo);
   steps.setMetadata(
     'Client-controlled computer opponent',
-    'A single browser connection owns a normal human seat and locally drives the logical computer seat.'
+    'A single browser connection runs private-state-safe Maharaja search and drives the logical computer seat.'
   );
 
   await page.addInitScript((roomCode) => {
@@ -22,6 +22,8 @@ test('one client creates and plays against a computer opponent', async ({ page }
   }, gameId);
   await page.goto('/?seed=fixed-bot-013');
   await page.getByLabel('Your trader name').fill('Asha');
+  await expect(page.getByLabel('Computer difficulty').locator('option')).toHaveCount(2);
+  await page.getByLabel('Computer difficulty').selectOption('maharaja');
   await page.getByRole('button', { name: 'Play vs computer' }).click();
   await expect(page).toHaveURL(new RegExp(`[?&]gameId=${gameId}(?:&|$)`));
 
@@ -33,7 +35,7 @@ test('one client creates and plays against a computer opponent', async ({ page }
         check: async () => {
           await expect(page.getByLabel('Game lobby').getByText('Asha', { exact: true })).toBeVisible();
           await expect(page.getByLabel('Game lobby').getByText('Maharaja', { exact: true })).toBeVisible();
-          await expect(page.getByLabel('Game lobby')).toContainText('Computer · Apprentice · Ready');
+          await expect(page.getByLabel('Game lobby')).toContainText('Computer · Maharaja · Ready');
         }
       },
       {

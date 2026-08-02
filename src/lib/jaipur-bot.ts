@@ -1,4 +1,4 @@
-import type { GameEventType } from './game-events';
+import type { BotDifficulty, GameEventType } from './game-events';
 import type { Card, CardKind, GameState, Good, Token } from './jaipur-rules';
 
 export type JaipurAction =
@@ -14,6 +14,7 @@ export interface BotObservation {
   turnNumber: number;
   activeUid: string;
   status: 'active' | 'complete';
+  starterUid: string;
   market: Card[];
   deckCount: number;
   hand: Card[];
@@ -26,6 +27,8 @@ export interface BotObservation {
   ownedBonusTokens: Token[];
   opponentGoodsTokens: Token[];
   opponentBonusTokenCount: number;
+  opponentBonusTokenKinds: Record<'3' | '4' | '5', number>;
+  discardCounts: Record<Good, number>;
   seals: { bot: number; opponent: number };
 }
 
@@ -33,8 +36,10 @@ const goods: Good[] = ['diamond', 'gold', 'silver', 'cloth', 'spice', 'leather']
 const cardKinds: CardKind[] = [...goods, 'camel'];
 const expensiveGoods = new Set<Good>(['diamond', 'gold', 'silver']);
 
-export function createBotObservation(state: GameState): BotObservation | null {
-  const botUid = state.bot?.uid;
+export function createBotObservation(
+  state: GameState,
+  botUid = state.bot?.uid
+): BotObservation | null {
   const round = state.round;
   if (!botUid || !round) return null;
   const opponentUid = state.players.find(({ uid }) => uid !== botUid)?.uid;
@@ -47,6 +52,7 @@ export function createBotObservation(state: GameState): BotObservation | null {
     turnNumber: round.turnNumber,
     activeUid: round.activeUid,
     status: round.status,
+    starterUid: round.starterUid,
     market: round.market.map((card) => ({ ...card })),
     deckCount: round.deck.length,
     hand: (round.hands[botUid] ?? []).map((card) => ({ ...card })),
@@ -65,6 +71,14 @@ export function createBotObservation(state: GameState): BotObservation | null {
     ownedBonusTokens: (round.ownedBonusTokens[botUid] ?? []).map((token) => ({ ...token })),
     opponentGoodsTokens: (round.ownedGoodsTokens[opponentUid] ?? []).map((token) => ({ ...token })),
     opponentBonusTokenCount: round.ownedBonusTokens[opponentUid]?.length ?? 0,
+    opponentBonusTokenKinds: {
+      '3': round.ownedBonusTokens[opponentUid]?.filter(({ kind }) => kind === 'bonus-3').length ?? 0,
+      '4': round.ownedBonusTokens[opponentUid]?.filter(({ kind }) => kind === 'bonus-4').length ?? 0,
+      '5': round.ownedBonusTokens[opponentUid]?.filter(({ kind }) => kind === 'bonus-5').length ?? 0
+    },
+    discardCounts: Object.fromEntries(
+      goods.map((kind) => [kind, round.discard.filter((card) => card.kind === kind).length])
+    ) as Record<Good, number>,
     seals: {
       bot: state.seals[botUid] ?? 0,
       opponent: state.seals[opponentUid] ?? 0
@@ -170,7 +184,7 @@ function topGoodsValue(observation: BotObservation, kind: Good, offset = 0): num
   return observation.goodsTokens[kind][offset]?.value ?? 0;
 }
 
-function actionKey(action: JaipurAction): string {
+export function botActionKey(action: JaipurAction): string {
   switch (action.type) {
     case 'take-one': return `1:${action.cardId}`;
     case 'take-camels': return '2:camels';
@@ -179,7 +193,7 @@ function actionKey(action: JaipurAction): string {
   }
 }
 
-function scoreAction(observation: BotObservation, action: JaipurAction): number {
+export function scoreBotAction(observation: BotObservation, action: JaipurAction): number {
   const handCounts = Object.fromEntries(
     goods.map((kind) => [kind, observation.hand.filter((card) => card.kind === kind).length])
   ) as Record<Good, number>;
@@ -235,8 +249,12 @@ function scoreAction(observation: BotObservation, action: JaipurAction): number 
 export function chooseBotAction(observation: BotObservation): JaipurAction | null {
   const actions = listLegalActions(observation);
   return actions
-    .map((action) => ({ action, score: scoreAction(observation, action), key: actionKey(action) }))
+    .map((action) => ({ action, score: scoreBotAction(observation, action), key: botActionKey(action) }))
     .sort((left, right) => right.score - left.score || left.key.localeCompare(right.key))[0]?.action ?? null;
+}
+
+export function botEngineVersion(difficulty: BotDifficulty): number {
+  return difficulty === 'maharaja' ? 2 : 1;
 }
 
 export function botActionEvent(

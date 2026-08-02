@@ -15,10 +15,15 @@
   import GameSummary from '$lib/GameSummary.svelte';
   import TokenChip from '$lib/TokenChip.svelte';
   import TokenStack from '$lib/TokenStack.svelte';
+  import StrongBotWorker from '$lib/jaipur-bot.worker?worker';
+  import type { StrongBotRequest, StrongBotResponse } from '$lib/jaipur-bot.worker';
   import {
     botActionEvent,
+    botEngineVersion,
     chooseBotAction,
-    createBotObservation
+    createBotObservation,
+    type BotObservation,
+    type JaipurAction
   } from '$lib/jaipur-bot';
   import {
     isLegalExchange,
@@ -31,7 +36,7 @@
     type Token
   } from '$lib/jaipur-rules';
   import { generateRoomCode, isRoomCode, normalizeRoomCode } from '$lib/room-code';
-  import type { GameActivity } from '$lib/game-events';
+  import type { BotDifficulty, GameActivity } from '$lib/game-events';
 
   type ActionMovementPlan = {
     activityId: string;
@@ -112,8 +117,11 @@
   let animatedTokenAwardIds = new Set<string>();
   let activeExchangeTarget = $state<string | null>(null);
   let botThinking = $state(false);
+  let botDifficulty = $state<BotDifficulty>('apprentice');
   let scheduledBotTurnKey = '';
   let botTurnTimer: ReturnType<typeof setTimeout> | undefined;
+  let activeBotWorker: Worker | undefined;
+  let cancelActiveBotSearch: (() => void) | undefined;
   let selectedHand = $state<string[]>([]);
   let selectedCamelId = $state<string | null>(null);
   let draggedReturnId = $state<string | null>(null);
@@ -279,12 +287,15 @@
     return `bot-${uid}`;
   }
 
+  const botDifficultyLabel = (difficulty: BotDifficulty) =>
+    difficulty === 'maharaja' ? 'Maharaja' : 'Apprentice';
+
   async function appendBotSeat(target: GameRepository) {
     await target.append('bot/added', {
       botUid: botPlayerUid(),
       displayName: 'Maharaja',
-      difficulty: 'apprentice',
-      engineVersion: 1
+      difficulty: botDifficulty,
+      engineVersion: botEngineVersion(botDifficulty)
     });
   }
 
@@ -311,16 +322,16 @@
   function scheduleBotTurn() {
     const key = currentBotTurnKey();
     if (!key || !repository || lobby.hostUid !== uid || status === 'offline' || status === 'error') {
-      if (!key) {
-        if (botTurnTimer) clearTimeout(botTurnTimer);
-        botTurnTimer = undefined;
-        scheduledBotTurnKey = '';
-        botThinking = false;
-      }
+      if (botTurnTimer) clearTimeout(botTurnTimer);
+      cancelStrongBotSearch();
+      botTurnTimer = undefined;
+      scheduledBotTurnKey = '';
+      botThinking = false;
       return;
     }
     if (scheduledBotTurnKey === key) return;
     if (botTurnTimer) clearTimeout(botTurnTimer);
+    cancelStrongBotSearch();
     scheduledBotTurnKey = key;
     botThinking = true;
     botTurnTimer = setTimeout(() => void playBotTurn(key), 450);
@@ -334,7 +345,12 @@
       return;
     }
     const observation = createBotObservation(lobby);
-    const action = observation ? chooseBotAction(observation) : null;
+    const action = observation
+      ? lobby.bot?.difficulty === 'maharaja'
+        ? await chooseStrongBotAction(expectedKey, observation)
+        : chooseBotAction(observation)
+      : null;
+    if (currentBotTurnKey() !== expectedKey) return;
     if (!observation || !action) {
       scheduledBotTurnKey = '';
       botThinking = false;
@@ -349,6 +365,51 @@
       botThinking = false;
       showError(error);
     }
+  }
+
+  function chooseStrongBotAction(
+    key: string,
+    observation: BotObservation
+  ): Promise<JaipurAction | null> {
+    cancelStrongBotSearch();
+    const worker = new StrongBotWorker();
+    activeBotWorker = worker;
+    return new Promise((resolve) => {
+      const fallback = () => {
+        clearTimeout(timeout);
+        worker.terminate();
+        if (activeBotWorker === worker) activeBotWorker = undefined;
+        if (cancelActiveBotSearch === cancel) cancelActiveBotSearch = undefined;
+        resolve(chooseBotAction(observation));
+      };
+      const timeout = setTimeout(fallback, 5000);
+      const cancel = () => {
+        clearTimeout(timeout);
+        worker.terminate();
+        resolve(null);
+      };
+      cancelActiveBotSearch = cancel;
+      worker.onmessage = (event: MessageEvent<StrongBotResponse>) => {
+        if (event.data.key !== key) return;
+        clearTimeout(timeout);
+        worker.terminate();
+        if (activeBotWorker === worker) activeBotWorker = undefined;
+        if (cancelActiveBotSearch === cancel) cancelActiveBotSearch = undefined;
+        resolve(event.data.action ?? chooseBotAction(observation));
+      };
+      worker.onerror = () => {
+        fallback();
+      };
+      worker.postMessage({ key, observation } satisfies StrongBotRequest);
+    });
+  }
+
+  function cancelStrongBotSearch() {
+    const cancel = cancelActiveBotSearch;
+    cancelActiveBotSearch = undefined;
+    activeBotWorker?.terminate();
+    activeBotWorker = undefined;
+    cancel?.();
   }
 
   async function toggleReady() {
@@ -1329,6 +1390,13 @@
           <input maxlength="32" autocomplete="name" bind:value={displayName} />
         </label>
         <div class="create-room">
+          <label class="bot-difficulty">
+            Computer difficulty
+            <select bind:value={botDifficulty}>
+              <option value="apprentice">Apprentice — quick learner</option>
+              <option value="maharaja">Maharaja — strongest</option>
+            </select>
+          </label>
           <div class="create-actions">
             <button
               type="button"
@@ -1382,7 +1450,9 @@
             <li class:local={player.uid === uid}>
               <span class="seat">{index + 1}</span>
               <strong>{player.displayName}</strong>
-              <span>{player.uid === lobby.bot?.uid ? 'Computer · Apprentice · Ready' : player.ready ? 'Ready' : 'Choosing wares'}</span>
+              <span>{player.uid === lobby.bot?.uid && lobby.bot
+                ? `Computer · ${botDifficultyLabel(lobby.bot.difficulty)} · Ready`
+                : player.ready ? 'Ready' : 'Choosing wares'}</span>
             </li>
           {/each}
           {#if lobby.players.length < 2}
@@ -1396,6 +1466,13 @@
           {lobby.players.find((player) => player.uid === uid)?.ready ? 'Not ready' : 'Ready to trade'}
         </button>
         {#if lobby.hostUid === uid && lobby.players.length === 1 && lobby.mode === 'standard'}
+          <label class="lobby-bot-difficulty">
+            Computer difficulty
+            <select bind:value={botDifficulty}>
+              <option value="apprentice">Apprentice</option>
+              <option value="maharaja">Maharaja — strongest</option>
+            </select>
+          </label>
           <button class="secondary" type="button" disabled={busy || status === 'offline'} onclick={addComputerOpponent}>
             Add computer opponent
           </button>
@@ -2079,7 +2156,8 @@
     text-align: left;
   }
   label { display: grid; gap: 0.35rem; font-weight: 700; }
-  input {
+  input,
+  select {
     width: 100%;
     min-height: 44px;
     padding: 0.75rem;
@@ -2088,6 +2166,15 @@
     background: white;
     color: inherit;
     font: inherit;
+  }
+  .bot-difficulty,
+  .lobby-bot-difficulty {
+    font-size: 0.82rem;
+  }
+  .lobby-bot-difficulty {
+    max-width: 17rem;
+    margin: 0.65rem auto;
+    text-align: left;
   }
   button {
     min-width: 44px;
@@ -2641,7 +2728,8 @@
   .join-room label {
     min-width: 0;
   }
-  input {
+  input,
+  select {
     min-height: 44px;
     padding: 0.45rem 0.65rem;
   }

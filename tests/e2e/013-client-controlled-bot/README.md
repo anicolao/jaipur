@@ -1,6 +1,6 @@
 # Client-controlled computer opponent
 
-A single browser connection owns a normal human seat and locally drives the logical computer seat.
+A single browser connection runs private-state-safe Maharaja search and drives the logical computer seat.
 
 ## The computer occupies the ready second seat
 
