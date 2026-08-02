@@ -293,6 +293,62 @@ describe('taking one good', () => {
   });
 });
 
+describe('client-controlled bot actions', () => {
+  const event = (
+    id: string,
+    type: GameEvent['type'],
+    actorUid: string,
+    payload: Record<string, unknown>
+  ): GameEvent => ({
+    id,
+    type,
+    actorUid,
+    payload,
+    clientSeq: Number(id.match(/\d+/)?.[0] ?? 1),
+    createdAtMillis: 1,
+    schemaVersion: 1,
+    reducerVersion: 1
+  });
+
+  it('accepts a bot move proxied by the host connection and attributes it to the bot', () => {
+    const setupEvents: GameEvent[] = [
+      event('a-1', 'game/created', 'a', { gameId: 'bot-room', displayName: 'Asha' }),
+      event('a-2', 'bot/added', 'a', {
+        botUid: 'bot-a',
+        displayName: 'Maharaja',
+        difficulty: 'apprentice',
+        engineVersion: 1
+      }),
+      event('a-3', 'player/ready', 'a', { ready: true }),
+      event('a-4', 'round/started', 'a', {
+        seed: 'bot-round',
+        starterUid: 'bot-a',
+        roundNumber: 1
+      })
+    ];
+    const before = reduceGame(setupEvents);
+    const card = legalSingleGoods(before.round!, 'bot-a')[0];
+    const after = reduceGame([
+      ...setupEvents,
+      event('a-5', 'cards/taken-one', 'a', {
+        playerUid: 'bot-a',
+        cardId: card.id,
+        roundNumber: 1,
+        turnNumber: 1
+      })
+    ]);
+
+    expect(after.round?.hands['bot-a']).toContainEqual(card);
+    expect(after.round?.activeUid).toBe('a');
+    expect(after.activity.at(-1)).toMatchObject({
+      type: 'cards/taken-one',
+      actorUid: 'bot-a',
+      cardIds: [card.id]
+    });
+    expect(after.diagnostics).toEqual([]);
+  });
+});
+
 describe('taking camels', () => {
   it('takes every market camel into the herd and refills every vacancy', () => {
     const base = (id: string, type: GameEvent['type'], actorUid: string, payload: Record<string, unknown>): GameEvent => ({

@@ -297,10 +297,12 @@ export function reduceGame(events: GameEvent[]): GameState {
   const actionActorUid = (event: GameEvent): string => {
     const requestedPlayerUid = event.payload.playerUid;
     if (
-      lobby.mode === 'tabletop' &&
       event.actorUid === lobby.hostUid &&
       typeof requestedPlayerUid === 'string' &&
-      playerUids.includes(requestedPlayerUid)
+      (
+        (lobby.mode === 'tabletop' && playerUids.includes(requestedPlayerUid)) ||
+        (lobby.mode === 'bot' && requestedPlayerUid === lobby.bot?.uid)
+      )
     ) {
       return requestedPlayerUid;
     }

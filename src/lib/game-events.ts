@@ -3,6 +3,7 @@ export const REDUCER_VERSION = 1;
 
 export type GameEventType =
   | 'game/created'
+  | 'bot/added'
   | 'tabletop/created'
   | 'tabletop/intent'
   | 'player/joined'
@@ -54,7 +55,12 @@ export interface GameActivity {
 export interface LobbyState {
   gameId: string | null;
   hostUid: string | null;
-  mode: 'standard' | 'tabletop';
+  mode: 'standard' | 'tabletop' | 'bot';
+  bot: {
+    uid: string;
+    difficulty: 'apprentice';
+    engineVersion: number;
+  } | null;
   players: Player[];
   activity: GameActivity[];
   diagnostics: string[];
@@ -64,6 +70,7 @@ export const EMPTY_LOBBY: LobbyState = {
   gameId: null,
   hostUid: null,
   mode: 'standard',
+  bot: null,
   players: [],
   activity: [],
   diagnostics: []
@@ -121,6 +128,39 @@ export function reduceLobby(events: GameEvent[]): LobbyState {
 
     if (!state.gameId) {
       state.diagnostics.push(`${event.id}: game does not exist`);
+      continue;
+    }
+
+    if (event.type === 'bot/added') {
+      const displayName = nameFrom(event);
+      const botUid = event.payload.botUid;
+      if (
+        event.actorUid !== state.hostUid ||
+        state.mode !== 'standard' ||
+        state.players.length !== 1 ||
+        !displayName ||
+        typeof botUid !== 'string' ||
+        botUid.length < 1 ||
+        botUid.length > 128 ||
+        botUid === event.actorUid ||
+        event.payload.difficulty !== 'apprentice' ||
+        event.payload.engineVersion !== 1
+      ) {
+        state.diagnostics.push(`${event.id}: invalid bot seat`);
+        continue;
+      }
+      state.mode = 'bot';
+      state.bot = {
+        uid: botUid,
+        difficulty: 'apprentice',
+        engineVersion: 1
+      };
+      state.players.push({ uid: botUid, displayName, ready: true, seat: 2 });
+      state.activity.push({
+        id: event.id,
+        type: event.type,
+        actorUid: botUid
+      });
       continue;
     }
 

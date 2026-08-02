@@ -16,6 +16,11 @@
   import TokenChip from '$lib/TokenChip.svelte';
   import TokenStack from '$lib/TokenStack.svelte';
   import {
+    botActionEvent,
+    chooseBotAction,
+    createBotObservation
+  } from '$lib/jaipur-bot';
+  import {
     isLegalExchange,
     isLegalSale,
     reduceGame,
@@ -106,6 +111,9 @@
   let repositorySnapshotReady = false;
   let animatedTokenAwardIds = new Set<string>();
   let activeExchangeTarget = $state<string | null>(null);
+  let botThinking = $state(false);
+  let scheduledBotTurnKey = '';
+  let botTurnTimer: ReturnType<typeof setTimeout> | undefined;
   let selectedHand = $state<string[]>([]);
   let selectedCamelId = $state<string | null>(null);
   let draggedReturnId = $state<string | null>(null);
@@ -186,6 +194,7 @@
           ? captureTokenAwards(lobby, nextLobby)
           : [];
         lobby = nextLobby;
+        scheduleBotTurn();
         if (!repositorySnapshotReady) {
           rememberOwnedTokenAwards(nextLobby);
           rememberActivities(nextLobby);
@@ -218,18 +227,19 @@
         status = repositoryStatus === 'offline' ? 'syncing' : repositoryStatus;
         statusText =
           status === 'syncing' ? 'Synchronizing game…' : 'Game synced';
+        if (status === 'synced') scheduleBotTurn();
       }
     );
     return attached;
   }
 
-  async function connect(mode: 'create' | 'join') {
+  async function connect(mode: 'create' | 'join' | 'bot') {
     if (!uid || !displayName.trim()) return;
     if (mode === 'join' && !isRoomCode(requestedGameId)) return;
     busy = true;
     try {
       const services = await initializeFirebase();
-      if (mode === 'create' && shellOnly) {
+      if (mode !== 'join' && shellOnly) {
         let attempts = 0;
         do {
           requestedGameId = generateRoomCode();
@@ -242,13 +252,14 @@
       if (!isRoomCode(requestedGameId)) return;
       const attached = attachRepository(services.db);
       const requestedSeat = Number(new URLSearchParams(location.search).get('seat'));
-      await attached.append(mode === 'create' ? 'game/created' : 'player/joined', {
+      await attached.append(mode === 'join' ? 'player/joined' : 'game/created', {
         gameId: requestedGameId.trim(),
         displayName: displayName.trim(),
         ...(mode === 'join' && (requestedSeat === 1 || requestedSeat === 2)
           ? { seat: requestedSeat }
           : {})
       });
+      if (mode === 'bot') await appendBotSeat(attached);
       if (mode === 'join' && (requestedSeat === 1 || requestedSeat === 2)) {
         await attached.append('player/ready', { ready: true });
       }
@@ -261,6 +272,78 @@
       showError(error);
     } finally {
       busy = false;
+    }
+  }
+
+  function botPlayerUid(): string {
+    return `bot-${uid}`;
+  }
+
+  async function appendBotSeat(target: GameRepository) {
+    await target.append('bot/added', {
+      botUid: botPlayerUid(),
+      displayName: 'Maharaja',
+      difficulty: 'apprentice',
+      engineVersion: 1
+    });
+  }
+
+  async function addComputerOpponent() {
+    if (!repository || lobby.hostUid !== uid || lobby.players.length !== 1 || lobby.mode !== 'standard') return;
+    busy = true;
+    try {
+      await appendBotSeat(repository);
+    } catch (error) {
+      showError(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function currentBotTurnKey(): string {
+    const botUid = lobby.bot?.uid;
+    const round = lobby.round;
+    return botUid && round?.status === 'active' && round.activeUid === botUid
+      ? `${lobby.epoch}:${round.number}:${round.turnNumber}`
+      : '';
+  }
+
+  function scheduleBotTurn() {
+    const key = currentBotTurnKey();
+    if (!key || !repository || lobby.hostUid !== uid || status === 'offline' || status === 'error') {
+      if (!key) {
+        if (botTurnTimer) clearTimeout(botTurnTimer);
+        botTurnTimer = undefined;
+        scheduledBotTurnKey = '';
+        botThinking = false;
+      }
+      return;
+    }
+    if (scheduledBotTurnKey === key) return;
+    if (botTurnTimer) clearTimeout(botTurnTimer);
+    scheduledBotTurnKey = key;
+    botThinking = true;
+    botTurnTimer = setTimeout(() => void playBotTurn(key), 450);
+  }
+
+  async function playBotTurn(expectedKey: string) {
+    botTurnTimer = undefined;
+    if (!repository || currentBotTurnKey() !== expectedKey) return;
+    const observation = createBotObservation(lobby);
+    const action = observation ? chooseBotAction(observation) : null;
+    if (!observation || !action) {
+      scheduledBotTurnKey = '';
+      botThinking = false;
+      showError(new Error('The computer could not find a legal move'));
+      return;
+    }
+    const event = botActionEvent(observation, action);
+    try {
+      await repository.append(event.type, event.payload);
+    } catch (error) {
+      scheduledBotTurnKey = '';
+      botThinking = false;
+      showError(error);
     }
   }
 
@@ -533,7 +616,9 @@
         endSize
       }
     ];
-    setTimeout(() => finishReturnFlight(key), 620);
+    // `animationend` is the normal cleanup path. Keep a generous fallback for
+    // backgrounded or heavily throttled browsers where that event can be late.
+    setTimeout(() => finishReturnFlight(key), 3000);
   }
 
   function finishReturnFlight(key: number) {
@@ -807,6 +892,9 @@
     switch (activity.type) {
       case 'game/created':
         description = 'opened the bazaar';
+        break;
+      case 'bot/added':
+        description = 'joined as a client-controlled computer';
         break;
       case 'tabletop/created':
         description = 'opened a tabletop';
@@ -1237,14 +1325,24 @@
           <input maxlength="32" autocomplete="name" bind:value={displayName} />
         </label>
         <div class="create-room">
-          <button
-            type="button"
-            disabled={busy || !displayName.trim()}
-            onclick={() => connect('create')}
-          >
-            Create new game
-          </button>
-          <span>A five-letter code is generated automatically.</span>
+          <div class="create-actions">
+            <button
+              type="button"
+              disabled={busy || !displayName.trim()}
+              onclick={() => connect('create')}
+            >
+              Create new game
+            </button>
+            <button
+              class="secondary"
+              type="button"
+              disabled={busy || !displayName.trim()}
+              onclick={() => connect('bot')}
+            >
+              Play vs computer
+            </button>
+          </div>
+          <span>Both choices generate a five-letter game code.</span>
         </div>
         <div class="join-room">
           <label>
@@ -1280,7 +1378,7 @@
             <li class:local={player.uid === uid}>
               <span class="seat">{index + 1}</span>
               <strong>{player.displayName}</strong>
-              <span>{player.ready ? 'Ready' : 'Choosing wares'}</span>
+              <span>{player.uid === lobby.bot?.uid ? 'Computer · Apprentice · Ready' : player.ready ? 'Ready' : 'Choosing wares'}</span>
             </li>
           {/each}
           {#if lobby.players.length < 2}
@@ -1293,6 +1391,11 @@
         <button type="button" disabled={busy || status === 'offline'} onclick={toggleReady}>
           {lobby.players.find((player) => player.uid === uid)?.ready ? 'Not ready' : 'Ready to trade'}
         </button>
+        {#if lobby.hostUid === uid && lobby.players.length === 1 && lobby.mode === 'standard'}
+          <button class="secondary" type="button" disabled={busy || status === 'offline'} onclick={addComputerOpponent}>
+            Add computer opponent
+          </button>
+        {/if}
         {#if lobby.hostUid === uid && lobby.players.length === 2 && lobby.players.every((player) => player.ready)}
           <button class="secondary" type="button" disabled={busy || status === 'offline'} onclick={startRound}>
             Open the market
@@ -1314,6 +1417,9 @@
           <div>
             <span>Round {lobby.round.number}</span>
             <strong>{lobby.players.find((player) => player.uid === lobby.round?.activeUid)?.displayName}'s turn</strong>
+            {#if botThinking && lobby.round.activeUid === lobby.bot?.uid}
+              <small class="bot-thinking" role="status">Considering the market…</small>
+            {/if}
           </div>
           <div class="deck-count">
             <img src={componentImage('card-back')} alt="" />
@@ -2467,6 +2573,12 @@
     color: #5f6f69;
     font-size: 0.8rem;
   }
+  .create-actions {
+    display: grid;
+    grid-template-columns: 1fr 1.25fr;
+    gap: 0.35rem;
+  }
+  .create-actions button { padding-inline: 0.65rem; }
   .join-room {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: end;
@@ -2718,6 +2830,12 @@
     margin: 0;
     padding: 0.3rem 0.5rem;
     font-size: clamp(0.65rem, 1.5vmin, 0.82rem);
+  }
+  .bot-thinking {
+    display: block;
+    color: #526762;
+    font-size: 0.68rem;
+    font-weight: 700;
   }
   .opponent-identity,
   .opponent-private {

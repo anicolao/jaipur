@@ -77,4 +77,59 @@ describe('lobby reducer', () => {
       ready: true
     });
   });
+
+  it('lets the host fill the second seat with a ready client-controlled bot', () => {
+    const state = reduceLobby([
+      event('a-1', 'game/created', 'a', { gameId: 'market', displayName: 'Asha' }),
+      event('a-2', 'bot/added', 'a', {
+        botUid: 'bot-a',
+        displayName: 'Maharaja',
+        difficulty: 'apprentice',
+        engineVersion: 1
+      })
+    ]);
+
+    expect(state.mode).toBe('bot');
+    expect(state.bot).toEqual({
+      uid: 'bot-a',
+      difficulty: 'apprentice',
+      engineVersion: 1
+    });
+    expect(state.players).toEqual([
+      { uid: 'a', displayName: 'Asha', ready: false, seat: 1 },
+      { uid: 'bot-a', displayName: 'Maharaja', ready: true, seat: 2 }
+    ]);
+    expect(state.activity.at(-1)).toEqual({
+      id: 'a-2',
+      type: 'bot/added',
+      actorUid: 'bot-a'
+    });
+  });
+
+  it('rejects bot seats added by a non-host or after the room is full', () => {
+    const state = reduceLobby([
+      event('a-1', 'game/created', 'a', { gameId: 'market', displayName: 'Asha' }),
+      event('b-1', 'bot/added', 'b', {
+        botUid: 'bot-b',
+        displayName: 'Maharaja',
+        difficulty: 'apprentice',
+        engineVersion: 1
+      }),
+      event('b-2', 'player/joined', 'b', { displayName: 'Belen' }),
+      event('a-2', 'bot/added', 'a', {
+        botUid: 'bot-a',
+        displayName: 'Maharaja',
+        difficulty: 'apprentice',
+        engineVersion: 1
+      })
+    ]);
+
+    expect(state.mode).toBe('standard');
+    expect(state.bot).toBeNull();
+    expect(state.players.map(({ uid }) => uid)).toEqual(['a', 'b']);
+    expect(state.diagnostics).toEqual([
+      'b-1: invalid bot seat',
+      'a-2: invalid bot seat'
+    ]);
+  });
 });
