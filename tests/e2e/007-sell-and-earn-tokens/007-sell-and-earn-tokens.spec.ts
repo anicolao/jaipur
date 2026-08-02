@@ -72,6 +72,7 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
     'data-stack-direction',
     'vertical'
   );
+  await page.evaluate(async () => document.fonts.ready);
   const tokenBox = await initialSpiceTokens.first().boundingBox();
   expect(tokenBox?.width).toBeGreaterThanOrEqual(48);
   const secondTokenBox = await initialSpiceTokens.nth(1).boundingBox();
@@ -81,8 +82,14 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
   expect(secondTokenBox).not.toBeNull();
   expect(firstRimBox).not.toBeNull();
   expect(secondRimBox).not.toBeNull();
-  expect(Math.abs(secondTokenBox!.x - tokenBox!.x)).toBeLessThanOrEqual(1);
-  expect(secondRimBox!.y - firstRimBox!.y).toBeGreaterThanOrEqual(firstRimBox!.height - 1);
+  if (testInfo.project.name === 'phone') {
+    expect(Math.abs(secondTokenBox!.y - tokenBox!.y)).toBeLessThanOrEqual(1);
+    expect(secondTokenBox!.x - tokenBox!.x).toBeGreaterThanOrEqual(8);
+    expect(secondRimBox!.x - firstRimBox!.x).toBeGreaterThanOrEqual(8);
+  } else {
+    expect(Math.abs(secondTokenBox!.x - tokenBox!.x)).toBeLessThanOrEqual(1);
+    expect(secondRimBox!.y - firstRimBox!.y).toBeGreaterThanOrEqual(firstRimBox!.height - 1);
+  }
   const rimValueStyle = await initialSpiceTokens.first().locator('.token-chip-rim').evaluate(
     (value) => {
       const style = getComputedStyle(value);
@@ -147,10 +154,14 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
   const ownDestinationBox = await page.locator('.own-token-tray').boundingBox();
   expect(firstSpiceBox).not.toBeNull();
   expect(ownDestinationBox).not.toBeNull();
-  expect(Math.hypot(
+  const sourceDistance = Math.hypot(
     center(flightStartBox).x - center(firstSpiceBox!).x,
     center(flightStartBox).y - center(firstSpiceBox!).y
-  )).toBeLessThanOrEqual(2);
+  );
+  expect(
+    sourceDistance,
+    `token flight starts ${sourceDistance}px from source: ${JSON.stringify({ flightStartBox, firstSpiceBox })}`
+  ).toBeLessThanOrEqual(2);
   expect(Math.hypot(
     center(flightEndBox).x - center(ownDestinationBox!).x,
     center(flightEndBox).y - center(ownDestinationBox!).y
@@ -174,9 +185,12 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
     description: 'A three-card sale awards ordered goods tokens and one hidden bonus',
     verifications: [
       {
-        spec: 'Asha sees the exact four-token award and private total',
+        spec: 'Asha sees the exact four-token award in the private stack',
         check: async () => {
-          await expect(page.locator('.own-token-tray')).toContainText('4 worth 12');
+          const privateValues = page.locator('.own-token-tray .owned-token .token-chip-rim');
+          await expect(privateValues).toHaveCount(4);
+          expect((await privateValues.allTextContents()).map(Number).reduce((sum, value) => sum + value, 0)).toBe(12);
+          await expect(page.locator('.own-token-tray')).toHaveAccessibleName('Your earned token stack');
           await expect(page.locator('.hand')).not.toContainText('spice-04');
         }
       },
@@ -258,7 +272,8 @@ test('both traders sell goods and earn public and private tokens', async ({ brow
       {
         spec: 'The next ordered spice token belongs to Belen',
         check: async () => {
-          await expect(rival.locator('.own-token-tray')).toContainText('1 worth 2');
+          await expect(rival.locator('.own-token-tray .owned-token')).toHaveCount(1);
+          await expect(rival.locator('.own-token-tray .token-chip-rim')).toHaveText('2');
           await expect(rival.locator('.token.spice')).toContainText('3 left');
         }
       },

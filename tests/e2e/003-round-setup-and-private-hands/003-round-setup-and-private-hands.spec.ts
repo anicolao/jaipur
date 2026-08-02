@@ -61,8 +61,11 @@ test('ready traders receive a deterministic private deal', async ({ browser, pag
           );
           await expect(page.locator('.opponent-herd')).toHaveAttribute(
             'aria-label',
-            `Belen has ${rivalHerdCount} ${rivalHerdCount === 1 ? 'camel' : 'camels'} in their herd`
+            'Belen camel herd'
           );
+          await expect(page.locator('.opponent-herd')).not.toContainText(/\d+ camels?/);
+          await expect(page.locator('.own-herd-label')).toHaveText('Your herd');
+          await expect(page.locator('.own-herd-label')).not.toContainText(/\d+ camels?/);
         }
       },
       {

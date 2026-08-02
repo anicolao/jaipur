@@ -68,9 +68,8 @@ test('the active trader takes every camel as one action', async ({ browser, page
           await expect(page.locator('.own-herd .own-camel-card')).toHaveCount(
             herdBefore + camelCount
           );
-          await expect(page.locator('.own-herd-label strong')).toHaveText(
-            `${herdBefore + camelCount} camels`
-          );
+          await expect(page.locator('.own-herd-label')).toHaveText('Your herd');
+          await expect(page.locator('.own-herd-label')).not.toContainText(/\d+ camels?/);
           await expect(rival.locator('.opponent-herd .camel-pile img')).toHaveCount(
             herdBefore + camelCount
           );

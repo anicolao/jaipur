@@ -111,15 +111,16 @@ test('one client creates and plays against the strongest computer opponent', asy
         }
       },
       {
-        spec: 'The opponent remains a normal concealed hand and exact public herd',
+        spec: 'The opponent remains a normal concealed hand and graphical public herd',
         check: async () => {
           await expect(page.locator('.opponent')).toContainText('Maharaja');
           const opponentCards = await page.locator('.opponent-hand .opponent-card-back').count();
           await expect(page.locator('.opponent')).toContainText(`${opponentCards} / 7 cards`);
           await expect(page.locator('.opponent-herd')).toHaveAttribute(
             'aria-label',
-            /Maharaja has \d+ camels? in their herd/
+            'Maharaja camel herd'
           );
+          await expect(page.locator('.opponent-herd')).not.toContainText(/\d+ camels?/);
         }
       }
     ]

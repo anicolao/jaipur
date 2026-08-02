@@ -8,7 +8,7 @@ Physical chips leave their ordered supplies and fly to each seller before Belen 
 
 **Verifications:**
 
-- [x] Asha sees the exact four-token award and private total
+- [x] Asha sees the exact four-token award in the private stack
 - [x] The public spice supply loses its three highest tokens
 - [x] Belen sees the token count without Asha’s bonus value
 

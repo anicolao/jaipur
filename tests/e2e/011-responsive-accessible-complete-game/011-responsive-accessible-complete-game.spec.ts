@@ -210,11 +210,9 @@ test('the complete table is responsive and accessible by keyboard and touch', as
           await expect(page.getByRole('heading', { name: 'Your hand' })).toBeVisible();
           await expect(page.getByRole('heading', { name: 'Token supplies' })).toBeVisible();
           await expect(page.locator('.opponent')).toContainText('values hidden');
-          await expect(page.locator('.opponent-herd')).toHaveAccessibleName(
-            /Belen has \d+ camels? in their herd/
-          );
+          await expect(page.locator('.opponent-herd')).toHaveAccessibleName('Belen camel herd');
           await expect(page.locator('.own-herd')).toContainText('Your herd');
-          await expect(page.locator('.own-herd-label strong')).toHaveText(/\d+ camels?/);
+          await expect(page.locator('.own-herd')).not.toContainText(/\d+ camels?/);
           await expect(page.locator('.opponent')).toContainText('2 / 7 cards');
           await expect(page.locator('.opponent-hand .opponent-card-back')).toHaveCount(2);
           await expect(page.locator('.opponent-hand')).toHaveAttribute(
