@@ -304,9 +304,10 @@
     busy = true;
     try {
       const fixedSeed = new URLSearchParams(location.search).get('seed');
-      await repository.append('game/rematched', { epoch: lobby.epoch + 1 });
+      const nextEpoch = lobby.epoch + 1;
+      await repository.append('game/rematched', { epoch: nextEpoch });
       await repository.append('round/started', {
-        seed: fixedSeed ? `${fixedSeed}:rematch:${lobby.epoch + 1}` : crypto.randomUUID(),
+        seed: fixedSeed ? `${fixedSeed}:rematch:${nextEpoch}` : crypto.randomUUID(),
         starterUid: lobby.players[0].uid,
         roundNumber: 1
       });
@@ -1396,12 +1397,19 @@
                     class="card-action pending-draw-card"
                     type="button"
                     disabled={busy || status === 'offline' || pendingDraw?.activeUid !== uid}
-                    aria-label={pendingDraw?.activeUid === uid ? 'Confirm draw' : 'Facedown card pending draw'}
+                    aria-label={pendingDraw?.activeUid === uid
+                      ? 'Confirm draw'
+                      : pendingDraw?.kind === 'camels'
+                        ? 'Draw Camels pending'
+                        : 'Draw Single pending'}
                     data-card-id={card.id}
                     data-pending-draw-card={card.id}
                     onclick={confirmPendingDraw}
                   >
-                    <PieceArt kind="card-back" label="Facedown card" />
+                    <PieceArt
+                      kind="card-back"
+                      label={pendingDraw?.kind === 'camels' ? 'Draw Camels' : 'Draw Single'}
+                    />
                   </button>
                 {:else if lobby.round.activeUid === uid}
                   <button

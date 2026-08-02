@@ -41,6 +41,20 @@ export interface GameRepository {
   reconnect: () => Promise<void>;
 }
 
+const compareRemoteEvents = (left: GameEvent, right: GameEvent) =>
+  left.createdAtMillis - right.createdAtMillis || left.id.localeCompare(right.id);
+
+const comparePendingEvents = (left: GameEvent, right: GameEvent) =>
+  left.clientSeq - right.clientSeq || left.id.localeCompare(right.id);
+
+export function orderEventStream(remote: GameEvent[], pending: GameEvent[]): GameEvent[] {
+  const remoteIds = new Set(remote.map(({ id }) => id));
+  return [
+    ...[...remote].sort(compareRemoteEvents),
+    ...pending.filter(({ id }) => !remoteIds.has(id)).sort(comparePendingEvents)
+  ];
+}
+
 export async function gameRoomExists(db: Firestore, gameId: string): Promise<boolean> {
   const snapshot = await getDocs(
     query(collection(db, 'games', gameId, 'events'), limit(1))
@@ -60,11 +74,7 @@ export function createGameRepository(
   let remote: GameEvent[] = [];
   let notify: ((events: GameEvent[]) => void) | undefined;
 
-  const ordered = () =>
-    [...remote, ...pending].sort(
-      (left, right) =>
-        left.createdAtMillis - right.createdAtMillis || left.id.localeCompare(right.id)
-    );
+  const ordered = () => orderEventStream(remote, pending);
 
   return {
     async append(type, payload) {
@@ -116,6 +126,7 @@ export function createGameRepository(
         { includeMetadataChanges: true },
         (snapshot) => {
           remote = snapshot.docs
+            .filter((snapshotDocument) => !snapshotDocument.metadata.hasPendingWrites)
             .map((snapshotDocument): GameEvent => {
               const value = snapshotDocument.data() as StoredEvent;
               return {
