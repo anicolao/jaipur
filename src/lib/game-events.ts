@@ -8,6 +8,8 @@ export type GameEventType =
   | 'player/joined'
   | 'player/ready'
   | 'round/started'
+  | 'cards/draw-initiated'
+  | 'cards/draw-abandoned'
   | 'cards/taken-one'
   | 'cards/taken-camels'
   | 'cards/exchanged'

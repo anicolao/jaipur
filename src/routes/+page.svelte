@@ -22,14 +22,10 @@
     type Card,
     type GameState,
     type Good,
+    type PendingDraw,
     type Token
   } from '$lib/jaipur-rules';
   import { generateRoomCode, isRoomCode, normalizeRoomCode } from '$lib/room-code';
-  import {
-    beginPendingDraw,
-    pendingDrawIsCurrent,
-    type PendingDraw
-  } from '$lib/pending-draw';
   import type { GameActivity } from '$lib/game-events';
 
   type ActionMovementPlan = {
@@ -53,7 +49,7 @@
   let lobby = $state<GameState>(reduceGame([]));
   let repository = $state<GameRepository>();
   let busy = $state(false);
-  let pendingDraw = $state<PendingDraw | null>(null);
+  let pendingDraw = $derived<PendingDraw | null>(lobby.pendingDraw);
   let shellOnly = $state(true);
   let exchangeLoads = $state<Record<string, string>>({});
   let returnFlights = $state<Array<{
@@ -189,9 +185,6 @@
         const tokenAwards = repositorySnapshotReady
           ? captureTokenAwards(lobby, nextLobby)
           : [];
-        if (pendingDraw && !busy && !pendingDrawIsCurrent(pendingDraw, nextLobby.round)) {
-          pendingDraw = null;
-        }
         lobby = nextLobby;
         if (!repositorySnapshotReady) {
           rememberOwnedTokenAwards(nextLobby);
@@ -333,7 +326,6 @@
         roundNumber: lobby.round.number,
         turnNumber: lobby.round.turnNumber
       });
-      pendingDraw = null;
       resetInteractions();
     } catch (error) {
       showError(error);
@@ -350,7 +342,6 @@
         roundNumber: lobby.round.number,
         turnNumber: lobby.round.turnNumber
       });
-      pendingDraw = null;
       resetInteractions();
     } catch (error) {
       showError(error);
@@ -359,25 +350,42 @@
     }
   }
 
-  function initiateDraw(card: Card) {
-    if (!lobby.round || lobby.round.activeUid !== uid || pendingDraw || busy) return;
-    const nextPendingDraw = beginPendingDraw(lobby.round, card);
-    if (!nextPendingDraw) return;
+  async function initiateDraw(card: Card) {
+    if (!repository || !lobby.round || lobby.round.activeUid !== uid || pendingDraw || busy) return;
     resetInteractions();
-    pendingDraw = nextPendingDraw;
+    busy = true;
+    try {
+      await repository.append('cards/draw-initiated', {
+        cardId: card.id,
+        roundNumber: lobby.round.number,
+        turnNumber: lobby.round.turnNumber
+      });
+    } catch (error) {
+      showError(error);
+    } finally {
+      busy = false;
+    }
   }
 
-  function abandonPendingDraw() {
-    if (busy) return;
-    pendingDraw = null;
+  async function abandonPendingDraw() {
+    const draw = pendingDraw;
+    if (!repository || !lobby.round || !draw || draw.activeUid !== uid || busy) return;
+    busy = true;
+    try {
+      await repository.append('cards/draw-abandoned', {
+        roundNumber: draw.roundNumber,
+        turnNumber: draw.turnNumber
+      });
+    } catch (error) {
+      showError(error);
+    } finally {
+      busy = false;
+    }
   }
 
   async function confirmPendingDraw() {
     const draw = pendingDraw;
-    if (!draw || !pendingDrawIsCurrent(draw, lobby.round)) {
-      pendingDraw = null;
-      return;
-    }
+    if (!draw || draw.activeUid !== uid) return;
     if (draw.kind === 'camels') await takeCamels();
     else await takeOne(draw.cardIds[0]);
   }
@@ -460,6 +468,7 @@
     mode: 'click' | 'drag' = 'click'
   ) {
     if (
+      pendingDraw ||
       !marketGood(marketCardId) ||
       (!handCard(returnCardId) && !herdCamel(returnCardId))
     ) {
@@ -531,6 +540,7 @@
   }
 
   function chooseExchangeDrop(marketCardId: string) {
+    if (pendingDraw) return;
     if (exchangeLoads[marketCardId]) {
       unloadExchange(marketCardId);
       return;
@@ -553,6 +563,7 @@
   }
 
   function chooseCamelSource() {
+    if (pendingDraw) return;
     if (suppressReturnClickId && herdCamel(suppressReturnClickId)) {
       suppressReturnClickId = null;
       return;
@@ -569,6 +580,7 @@
   }
 
   function chooseHandCard(card: Card) {
+    if (pendingDraw) return;
     if (suppressReturnClickId === card.id) {
       suppressReturnClickId = null;
       return;
@@ -593,7 +605,7 @@
     cardId: string,
     source: 'hand' | 'camel'
   ) {
-    if (!event.isPrimary || event.button !== 0 || busy || status === 'offline') return;
+    if (!event.isPrimary || event.button !== 0 || busy || pendingDraw || status === 'offline') return;
     pointerReturnDrag = {
       cardId,
       source,
@@ -810,6 +822,12 @@
       case 'round/started':
         description = `opened round ${activity.roundNumber ?? ''}`;
         if (activity.starterUid) description += ` · ${playerName(activity.starterUid)} starts`;
+        break;
+      case 'cards/draw-initiated':
+        description = 'started a draw';
+        break;
+      case 'cards/draw-abandoned':
+        description = 'cancelled a draw';
         break;
       case 'cards/taken-one':
         description = `took ${kinds[0] ?? 'a good'}`;
@@ -1326,11 +1344,11 @@
           style={`--zone-art: url("${componentImage('card-back')}")`}
         >
           <h2 id="market-heading">Market</h2>
-          {#if pendingDraw}
+          {#if pendingDraw && pendingDraw.activeUid === uid}
             <div class="draw-confirmation" role="group" aria-label="Confirm draw" data-pending-draw={pendingDraw.kind}>
               <span>{pendingDraw.kind === 'camels' ? `Take all ${pendingDraw.cardIds.length} camels?` : 'Take this card?'}</span>
               <button type="button" disabled={busy || status === 'offline'} data-confirm-draw onclick={confirmPendingDraw}>Confirm</button>
-              <button class="secondary" type="button" disabled={busy} data-abandon-draw onclick={abandonPendingDraw}>Undo</button>
+              <button class="secondary" type="button" disabled={busy || status === 'offline'} data-abandon-draw onclick={abandonPendingDraw}>Undo</button>
             </div>
           {/if}
           {#if lobby.round.activeUid === uid && (exchangeMarketIds().length > 0 || activeExchangeTarget || selectedHand.length > 0 || selectedCamelId)}
@@ -1377,8 +1395,8 @@
                   <button
                     class="card-action pending-draw-card"
                     type="button"
-                    disabled={busy || status === 'offline'}
-                    aria-label="Confirm draw"
+                    disabled={busy || status === 'offline' || pendingDraw?.activeUid !== uid}
+                    aria-label={pendingDraw?.activeUid === uid ? 'Confirm draw' : 'Facedown card pending draw'}
                     data-card-id={card.id}
                     data-pending-draw-card={card.id}
                     onclick={confirmPendingDraw}
@@ -1534,7 +1552,7 @@
                 class:selected={selectedHand.includes(card.id) || exchangeReturnIds().includes(card.id)}
                 class:dragging={draggedReturnId === card.id}
                 type="button"
-                disabled={status === 'offline'}
+                disabled={busy || Boolean(pendingDraw) || status === 'offline'}
                 aria-label={exchangeReturnIds().includes(card.id)
                   ? `${cardLabel(card.kind)} ${card.id} loaded for exchange`
                   : activeExchangeTarget
@@ -1572,7 +1590,7 @@
                 class:selected={Boolean(selectedCamelId)}
                 class:dragging={draggedReturnSource === 'camel'}
                 type="button"
-                disabled={busy || status === 'offline' || ownHerdCards().length === 0}
+                disabled={busy || Boolean(pendingDraw) || status === 'offline' || ownHerdCards().length === 0}
                 aria-label="Select or drag a camel from your herd for exchange"
                 aria-pressed={Boolean(selectedCamelId)}
                 style={`--herd-span: ${ownCamelStackSpan()}`}

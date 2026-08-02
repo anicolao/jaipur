@@ -31,6 +31,8 @@ test('the active trader takes every camel as one action', async ({ browser, page
 
   await expect(page.locator('[data-pending-draw="camels"]')).toBeVisible();
   await expect(page.locator('[data-pending-draw-card]')).toHaveCount(camelCount);
+  await expect(rival.locator('[data-pending-draw-card]')).toHaveCount(camelCount);
+  await expect(rival.locator('[data-confirm-draw], [data-abandon-draw]')).toHaveCount(0);
   await expect(page.locator('.own-herd .own-camel-card')).toHaveCount(herdBefore);
   await expect(page.getByText('Deck').locator('..')).toContainText(String(deckBefore));
   await expect(page.getByText("Asha's turn")).toBeVisible();
