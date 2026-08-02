@@ -51,7 +51,39 @@ test('one client creates and plays against a computer opponent', async ({ page }
   await expect(page.getByText("Asha's turn")).toBeVisible();
   await page.locator('.market button.card-action:not(.camel):not(:disabled)').first().click();
   await page.locator('[data-confirm-draw]').click();
-  await expect(page.locator('.game-log')).toContainText(/Maharaja.*(took|traded|sold)/);
+  const humanActivity = page.locator('.game-log [data-activity-type^="cards/"]', {
+    hasText: /^Asha/
+  }).first();
+  const humanActivityId = await humanActivity.getAttribute('data-activity-id');
+  expect(humanActivityId).toBeTruthy();
+  const humanFlights = page.locator(`[data-action-flight-id="${humanActivityId}"]`);
+  await expect(humanFlights.first()).toBeVisible();
+  await humanFlights.evaluateAll((flights) => {
+    for (const flight of flights) {
+      for (const animation of flight.getAnimations()) animation.finish();
+    }
+  });
+
+  const computerActivity = page.locator('.game-log [data-activity-type^="cards/"]', {
+    hasText: /^Maharaja/
+  }).first();
+  await expect(computerActivity).toContainText(/Maharaja.*(took|traded|sold)/);
+  const computerActivityId = await computerActivity.getAttribute('data-activity-id');
+  expect(computerActivityId).toBeTruthy();
+  const computerFlights = page.locator(`[data-action-flight-id="${computerActivityId}"]`);
+  await expect(computerFlights.first()).toBeVisible();
+  await computerFlights.evaluateAll((flights) => {
+    for (const flight of flights) {
+      for (const animation of flight.getAnimations()) animation.pause();
+    }
+  });
+  await expect(page.locator('[data-latest-action]')).toContainText(
+    /Latest\s+Maharaja.*(took|traded|sold)/
+  );
+  await expect(page.locator('[data-latest-action]')).toHaveAttribute(
+    'data-latest-activity-id',
+    computerActivityId!
+  );
   await expect(page.getByText("Asha's turn")).toBeVisible();
   await page.locator('.action-card-flight, .token-flight').evaluateAll((flights) => {
     for (const flight of flights) {
