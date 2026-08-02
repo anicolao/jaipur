@@ -708,7 +708,10 @@
                 data-pending-draw-card={card.id}
                 onclick={confirmPendingDraw}
               >
-                <PieceArt kind="card-back" label="Facedown card" />
+                <PieceArt
+                  kind="card-back"
+                  label={pendingDraw?.kind === 'camels' ? 'Draw Camels' : 'Draw Single'}
+                />
               </button>
             {:else}
             <button

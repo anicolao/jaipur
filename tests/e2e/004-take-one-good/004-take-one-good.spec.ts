@@ -27,7 +27,7 @@ test('the active trader takes one good and refills the market', async ({ browser
 
   await expect(page.locator('[data-pending-draw="one"]')).toBeVisible();
   await expect(page.locator(`[data-pending-draw-card="${cardId}"]`)).toBeVisible();
-  await expect(page.locator(`[data-pending-draw-card="${cardId}"] .piece-label`)).toHaveText('Facedown card');
+  await expect(page.locator(`[data-pending-draw-card="${cardId}"] .piece-label`)).toHaveText('Draw Single');
   await expect(rival.locator(`[data-pending-draw-card="${cardId}"]`)).toBeVisible();
   await expect(rival.locator('[data-confirm-draw], [data-abandon-draw]')).toHaveCount(0);
   await rival.reload();
@@ -41,7 +41,7 @@ test('the active trader takes one good and refills the market', async ({ browser
   await page.locator('[data-abandon-draw]').click();
   await expect(page.locator('[data-pending-draw]')).toHaveCount(0);
   await expect(rival.locator('[data-pending-draw-card]')).toHaveCount(0);
-  await expect(page.locator(`.market [data-card-id="${cardId}"] .piece-label`)).not.toHaveText('Facedown card');
+  await expect(page.locator(`.market [data-card-id="${cardId}"] .piece-label`)).not.toHaveText('Draw Single');
   await expect(page.locator('.hand [data-card-id]')).toHaveCount(handBefore);
   await expect(page.getByText('Deck').locator('..')).toContainText(String(deckBefore));
 

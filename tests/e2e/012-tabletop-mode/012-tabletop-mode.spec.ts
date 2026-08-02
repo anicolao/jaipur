@@ -165,6 +165,7 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   await publicTake.click();
   await expect(page.locator('[data-pending-draw="one"]')).toBeVisible();
   await expect(page.locator('[data-pending-draw-card]')).toHaveCount(1);
+  await expect(page.locator('[data-pending-draw-card] .piece-label')).toHaveText('Draw Single');
   await expect(firstPhone.locator('[data-pending-draw="one"]')).toContainText(
     'Draw awaiting confirmation on the table'
   );
