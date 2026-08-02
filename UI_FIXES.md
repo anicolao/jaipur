@@ -1,408 +1,222 @@
-# Tabletop UI fixes proposal
+# Ordinary game UI proposal
 
-## Goal
+This proposal is primarily about the ordinary desktop and phone game surfaces. The existing tabletop surface is already close to the desired experience and should receive only the limited refinements described in [Tabletop follow-up](#tabletop-follow-up).
 
-Make tabletop mode feel like a shared physical Jaipur table with two private
-hand controllers, rather than a desktop application divided into three
-panels. A player should be able to glance at the table, understand whose turn
-it is, see the available physical actions, and complete a move without reading
-instructions or mentally translating between the phone and table.
+The goal is to make the current turn, available actions, public information, and private hand understandable at a glance without scrolling. The screenshots below are generated from deterministic markup and are the visual contract for the proposed direction, not production implementation.
 
-This proposal is based on the current recorded views:
+## Why revise the ordinary game
 
-- [active tabletop](./tests/e2e/012-tabletop-mode/screenshots/000-two-seated-table-desktop.png)
-- [ordinary desktop market](./tests/e2e/003-round-setup-and-private-hands/screenshots/000-market-open-desktop.png)
-- [ordinary desktop exchange](./tests/e2e/011-responsive-accessible-complete-game/screenshots/000-keyboard-exchange-desktop.png)
-- [round summary](./tests/e2e/008-round-end-and-scoring/screenshots/000-round-scored-desktop.png)
+The desktop UI currently gives roughly equal visual weight to the market, token supply, opponent, and player. That makes the active play area feel like a dashboard of four unrelated panels. The phone UI carries the same composition into a narrow viewport, so the token bank, opponent area, and private hand compete for space while cards, labels, and controls become difficult to read.
 
-The current tabletop already has several important properties that should not
-be lost:
+The revised layout follows the way a turn is understood:
 
-- private goods remain on each player's phone;
-- the public table shows face-down hand counts, herds, seals, and token counts;
-- market cards occupy stable slots during exchanges and refills;
-- cards and tokens animate between their real sources and destinations;
-- the top player's edge and log are rotated 180 degrees;
-- token values remain private after they are earned;
-- the complete table fits without document scrolling.
+1. Whose turn is it?
+2. What does the opponent publicly have?
+3. What is available in the market and token supply?
+4. What action am I assembling or confirming?
+5. What private cards, camels, and tokens do I own?
+6. What just happened?
 
-## What the screenshots reveal
+Desktop and phone use the same information hierarchy. They differ in composition rather than presenting different rules or controls.
 
-### The shared table is visually secondary
+## Desktop
 
-The two player panels consume more than half of the display height. The public
-market is compressed into the middle, while the token bank consumes a full
-vertical rail on one side. This gives the screen the hierarchy of a dashboard:
-player information first, market second. On a real table the market, deck, and
-token bank are the primary objects, with compact player areas at the edges.
+### Current
 
-### Pieces change size as they move
+The current desktop surface is divided into four similarly prominent regions. The opponent consumes an entire quadrant even though only a card count, herd, and token count are actionable public information. The active market and private hand consequently have less room than their importance warrants.
 
-Market cards and the deck are substantially larger than the face-down cards
-in each player's public hand. A drawn card therefore stops behaving like one
-physical object and appears to shrink into a UI representation. Exchange
-returns shrink even further inside the dashed targets. Seven cards can fit at
-one physical size by overlapping or fanning; they should not be scaled down.
+![Current desktop game UI](tests/e2e/003-round-setup-and-private-hands/screenshots/000-market-open-desktop.png)
 
-### Reach and orientation favor the bottom player
+### Proposed turn state
 
-The token rail is beside the bottom player's right hand, but some stacks are a
-long reach from the top player. Its labels also have one reading direction.
-The market is shared and centered, while one of the other two principal action
-surfaces is not. This makes selling feel like using a toolbar rather than
-moving cards to a common token bank.
+![Proposed desktop turn UI](docs/ui-fixes/proposed-desktop-turn.png)
 
-### The next action is explained in small prose
+The proposed desktop composition has six stable bands:
 
-The most important guidance appears as a small sentence at the bottom of a
-large player panel. The table asks the player to infer a mode from invisible
-phone state: select privately, find a dashed target or token pile, then
-possibly find a confirmation control elsewhere. The phone reports counts, but
-neither surface presents the whole interaction as a short, spatial sequence.
+- A compact match bar communicates turn, round, deck size, and seals.
+- A shallow opponent strip shows the opponent's actual public state: hand size, herd, and token count.
+- The market is the largest public surface and retains five permanent card positions.
+- The token supply sits beside the market in a compact bank. Every remaining chip and rim value is still visible.
+- A contextual action dock explains the next valid step and holds confirmation or cancellation controls.
+- The private tray spans the near edge of the screen and contains the player's hand, exact herd, and face-up earned tokens.
 
-### Turn and action feedback are too quiet
+The latest action and game-log entry point remain persistently visible in the footer.
 
-The active edge gains a gold border and a small `Your turn` pill. The most
-recent action is available only after opening a corner log. From across a
-physical table, neither is strong enough to answer the two common questions:
-“Is it my turn?” and “What did the other player just do?”
+### Proposed staged exchange
 
-### Utility information competes with play
+![Proposed desktop exchange UI](docs/ui-fixes/proposed-desktop-exchange.png)
 
-The tabletop ID, connection text, build hash, round label, deck count, and
-logs all occupy the play surface. In the screenshot, connection/build text
-sits directly against the lower player edge. This information is useful, but
-it should not compete with cards or suggest that it is an action.
+The layout does not reflow when an exchange starts:
 
-### The table cannot be resumed explicitly
+- Market cards stay in their assigned slots.
+- Each return target stays directly below its market destination.
+- A selected hand card or camel flies to a target and becomes a face-down return card there.
+- Its source in the private tray is dimmed and marked `On table`, preserving spatial memory without visually duplicating an available card.
+- Return order is visible on both the source and destination.
+- The action dock changes from guidance to a concise trade summary with `Cancel` and `Trade` actions.
 
-`/tt/` always creates a new random room, even if `gameId` is supplied. A page
-reload therefore produces another table and another pair of QR codes rather
-than reconnecting the physical display. Recovery is part of a natural
-tabletop experience and should be unambiguous.
+## Phone
 
-## Proposed table layout
+### Current
 
-Use the entire width as a table and make both player edges shallow. Move the
-token bank into the shared center so both players have similar reach.
+The current phone surface behaves like a compressed desktop dashboard. Public tokens consume a disproportionate part of the viewport, while the market, hand, opponent status, and interaction instructions compete at small sizes.
 
-```text
-┌──────────────────────────────────────────────────────────────────────┐
-│  P1 log       P1 hand fan   P1 herd   P1 token backs    P1 status   │
-│                        (rotated 180°)                                │
-├──────────────────────────────────────────────────────────────────────┤
-│                     P1 action / latest-action dock                   │
-│                                                                      │
-│  bonus piles   deck    [ market slot 1 ··· market slot 5 ]          │
-│                                                                      │
-│          diamond   gold   silver   cloth   spice   leather           │
-│                     shared horizontal token bank                     │
-│                                                                      │
-│                     P2 action / latest-action dock                   │
-├──────────────────────────────────────────────────────────────────────┤
-│  P2 status     P2 hand fan   P2 herd   P2 token backs       P2 log  │
-└──────────────────────────────────────────────────────────────────────┘
+![Current phone game UI](tests/e2e/003-round-setup-and-private-hands/screenshots/000-market-open-phone.png)
+
+### Proposed turn state
+
+![Proposed phone turn UI](docs/ui-fixes/proposed-phone-turn.png)
+
+The phone surface is ordered by task rather than desktop panel geometry:
+
+- Turn and deck status remain visible at the top.
+- Opponent public state is compressed to one readable strip.
+- The five-position market remains the primary play area.
+- The complete token bank becomes a compact three-by-two grid. Stacks spread sideways so rim values remain visible in limited vertical space.
+- The contextual action dock separates public choices from the private tray.
+- The player's hand, exact herd, and earned token values occupy the bottom portion of the viewport.
+- The latest action remains pinned at the bottom.
+
+Nothing requires vertical or horizontal scrolling. Cards are not arbitrarily scaled between market and hand; each surface uses a deliberate physical card size appropriate to that viewport.
+
+### Proposed staged exchange
+
+![Proposed phone exchange UI](docs/ui-fixes/proposed-phone-exchange.png)
+
+The staged state uses the same controls and spatial model as desktop. It does not replace the phone with a wizard or modal:
+
+- Destinations and their loaded returns are visible in the market.
+- Selected private cards are visibly committed but remain recognizable at their source.
+- The dock states the complete proposed trade and keeps the destructive escape and committing action adjacent.
+- The market, supply, hand, herd, latest action, and public opponent state all remain visible.
+
+## Shared interaction model
+
+### Stable physical objects
+
+Cards and chips should behave like objects on a table:
+
+- The market owns five persistent slot identities for the entire round.
+- Drawing or exchanging replaces the contents of a slot; it does not compact the remaining cards as an array.
+- The card cell and its exchange target never change dimensions between idle, selected, pending, and resolved states.
+- Incoming cards animate directly from their source to the assigned empty slot, remain absent at the destination during flight, then flip and settle.
+- Cards use a consistent square footprint within a viewport. Hand overlap may vary, but the cards themselves do not stretch or shrink as they move.
+- Token stacks reveal every rim value. They spread vertically where height is plentiful and sideways where width is plentiful.
+
+### Contextual action dock
+
+The current interface makes several interaction systems visually compete. A single persistent dock should make the state machine explicit without reverting to separate action buttons for every game rule.
+
+| State | Dock message | Dock actions |
+| --- | --- | --- |
+| Player turn | Draw from the market, select cards to trade, or select matching cards to sell | Help only |
+| Cards selected | Names and count of selected cards; valid next destinations | Clear selection |
+| Exchange staged | Exact goods taken and exact number of returns loaded | Cancel, confirm trade |
+| Draw pending | `Draw Single` or `Draw Camels`; newly revealed positions remain face down | Undo, reveal/confirm |
+| Sale selected | Good, quantity, reward chips, and bonus eligibility | Cancel, sell |
+| Opponent turn | Waiting for opponent, with the latest observed action | Game log |
+
+The dock is explanatory, not a second copy of the board controls. Drawing still begins by tapping a market card, selling can still begin from either selected hand cards or a token stack, and exchanges still support clicking or drag-and-drop in either source/destination order.
+
+### Selection and movement feedback
+
+- Clicking and dragging must produce the same staged state.
+- A click-triggered card visibly flies from source to destination; it must not appear at the destination before the flight lands.
+- A dragged card follows the pointer and settles into the same destination representation.
+- A loaded source is visibly unavailable until the staged action is confirmed or abandoned.
+- Every committed local, remote, and bot action uses the same movement animation.
+- The latest action remains visible even after its animation completes.
+- Reduced-motion mode replaces flight and spin with an immediate cross-fade while preserving staging and confirmation states.
+
+### Information boundaries
+
+The surfaces must not imply information that Jaipur keeps private:
+
+- The opponent strip shows hand count, exact herd size, and number of earned tokens, but never token values.
+- The local private tray shows the player's exact hand, exact herd, every earned token, and their current total.
+- Disabled controls must not reveal whether another player can perform an exchange or sale.
+- The deck count, market, remaining public token stacks, seals, latest action, and game log remain public.
+
+## Responsive rules
+
+The layout should fit the supported viewport rather than depend on scrolling.
+
+### Wide screens
+
+- Put market and token supply side by side.
+- Spread market return targets vertically below their fixed cards.
+- Spread public token supplies vertically enough to expose every rim value.
+- Keep the private hand on the near edge and allow overlap only when needed to retain physical card size.
+
+### Narrow screens
+
+- Stack market above token supply.
+- Keep all five market columns visible; use short labels and square art rather than a horizontal carousel.
+- Arrange token supplies in a three-by-two grid and spread each stack sideways.
+- Recompose the private tray into hand and status columns. Do not merely scale the desktop grid down.
+- Preserve a minimum 44 by 44 CSS-pixel hit region for every actionable card, target, token stack, and confirmation control.
+- Truncate secondary explanatory copy before shrinking primary labels below a readable size.
+
+### Height pressure
+
+When height is the limiting dimension, reduce decorative padding and secondary copy first. Do not hide public state, reduce cards to ambiguous thumbnails, or introduce page scrolling. The game surface may use the full dynamic viewport height (`100dvh`) and account for device safe-area insets.
+
+## Tabletop follow-up
+
+The tabletop UI should not be redesigned as part of this work. Its layout and phone companion model are already successful. Three focused refinements are worth implementing separately:
+
+1. **Duplicate the token market visually.** Render one view of the same public token supply on each player's side, with the far copy rotated for that player. These are synchronized views of one inventory, never independent stacks.
+2. **Make market geometry permanent.** Give all five market cards and all replace targets fixed table coordinates. Exchanges and draws replace slot contents without moving unaffected cards or targets.
+3. **Prototype turn-facing market cards.** On a turn change, the five market cards may rotate 180 degrees to face the active player. This can be a strong turn indicator, but it should be tested behind a visual option because frequent rotation may be distracting. Rotate only after the previous action settles, use the shortest direction consistently, and disable the motion under `prefers-reduced-motion`.
+
+The duplicated token views should use the same responsive stack component as ordinary play. On the tabletop's opposing edges, orientation changes but ordering, chip values, and underlying state do not.
+
+## Mockup source and screenshots
+
+The proposal is intentionally reproducible:
+
+- [`tests/design/ui-fixes/ui-fixes.mockup.html`](tests/design/ui-fixes/ui-fixes.mockup.html) is deterministic semantic markup using the game's real card art.
+- [`tests/design/ui-fixes/ui-fixes.spec.ts`](tests/design/ui-fixes/ui-fixes.spec.ts) loads that markup in Playwright, switches interaction states, asserts that no page scroll or broken image exists, and captures the four screenshots in this document.
+- [`tests/design/playwright.config.ts`](tests/design/playwright.config.ts) supplies the local asset server and Chromium configuration.
+
+Regenerate the visual proposal with:
+
+```sh
+bun run design:ui-fixes
 ```
 
-The market, deck, exchange returns, public hand cards, and herd cards should
-all use one `--table-card-size`. Hand cards overlap as necessary. Token stacks
-retain one chip size from the bank through their flight to a player's tray.
+The committed reference canvases are:
 
-The goods bank should be a horizontal, six-stack physical bank in the shared
-zone. Bonus piles sit by the deck. Goods art and rim values already identify
-the stacks, so labels can be duplicated on both edges of the bank or made
-orientation-neutral. Nothing in the bank should be greyed out based on either
-player's private hand.
+| Surface | Viewport | State |
+| --- | ---: | --- |
+| Desktop turn | 1280 × 1000 | Idle player turn |
+| Desktop exchange | 1280 × 1000 | Two-for-two exchange staged |
+| Phone turn | 393 × 852 | Idle player turn |
+| Phone exchange | 393 × 852 | Two-for-two exchange staged |
 
-Player edges should contain only public physical state and immediate status:
+The markup is a design fixture, not a parallel application. Production work should extract and reuse components rather than ship or import the fixture.
 
-- oriented player name and a large turn beacon;
-- a fan of full-size face-down cards;
-- the messy public camel herd;
-- a stack of neutral token backs plus the public token count;
-- seals;
-- the latest action and access to that player's oriented log.
+## Suggested implementation order
 
-Remove the large empty areas and pill-shaped `N tokens` boxes. Earned tokens
-should visibly accumulate as a face-down chip pile; the exact values remain on
-the private phone.
-
-## Interaction model
-
-### A persistent active-player dock
-
-Place one compact action dock at the inner edge nearest the active player. It
-rotates with that player and changes with the current action. The inactive
-edge shows the latest completed action in the same location.
-
-The dock has three states:
-
-1. **Choose** — a short instruction such as `Choose a market card, camels, or
-   private cards on your phone`.
-2. **Stage** — a concrete summary of the pending physical move and its next
-   valid destinations.
-3. **Confirm** — prominent confirm and cancel controls when the move can reveal
-   information or when an exchange has been completely loaded.
-
-Touch targets should be at least 56 by 56 CSS pixels on the tabletop. Controls
-must never be placed under a player's arm at the far side of the display.
-
-### Draw one good
-
-1. The active player taps a market good.
-2. That exact market slot immediately turns face-down and reads `Draw Single`.
-3. The active-player dock says `Draw the Spice?` with `Confirm` and `Cancel`.
-4. Confirm flies the selected card directly into the active hand, then flies a
-   full-size card from the deck to the same market hole, flips it, and settles
-   it into place.
-5. Cancel restores the original card in the same slot without moving any
-   other market card.
-
-The existing persisted pending-draw event remains the source of truth so the
-phone and every connected display observe the stage immediately.
-
-### Draw camels
-
-Treat the camels as one physical group action:
-
-1. Tapping any camel turns every camel slot face-down and labels the staged
-   cards `Draw Camels`.
-2. The dock says `Take all N camels?` and shows confirm/cancel.
-3. On confirm, the camels fly as a short staggered group to the active herd.
-4. Deck cards refill the vacated slots individually without reordering the
-   remaining market.
-
-### Exchange
-
-The phone and table should read as one numbered sequence:
-
-1. `Select cards or camels to return` on the phone.
-2. `Place them below the goods you want` on the table.
-3. `Confirm trade` in the active-player dock.
-
-When the phone has selected at least one return, the table should animate a
-brief pulse around every empty exchange destination. Each destination should
-be a card-size dashed silhouette aligned with its market slot. Tapping it
-flies the next selected card directly from the player's public hand or herd
-into the silhouette. The returned card stays full-size and face-down.
-
-A loaded destination can be tapped to send that return card back to the hand
-or herd and restore the phone selection. Existing market cards must never
-reflow. Once at least two legal pairs are loaded, the dock shows a physical
-summary (`Trade 2 for Diamond + Gold`) and confirm/cancel. Cancel unloads all
-returns; confirm runs the existing exchange and flip animations.
-
-Use ordinal markers on both devices while staging (`1`, `2`, `3`) so the user
-can see which private selection will fill the next public target without
-revealing its face.
-
-### Sell goods
-
-Keep both supported paths, but make their result predictable:
-
-- selecting same-kind goods makes the phone name and illustrate the matching
-  public token stack while the table bank itself remains visually unchanged;
-- tapping that stack sells the selected cards;
-- tapping a stack with no private selection sells all held cards of that kind,
-  as it does now;
-- mixed selections do not grey or alter unrelated stacks, because that would
-  disclose private information to the opponent.
-
-Before the tap, the active-player dock should say either `Tap the matching
-token stack to sell selected goods` or the neutral `Tap a token stack to sell
-all matching goods`. The committed sale then flies full-size face-down cards
-from the public hand to the bank and chips from their real stacks to the
-player's face-down token pile. Bonus chips use their own pile as the source.
-
-### Latest action and history
-
-Always display the latest completed action in both orientations, close to each
-player edge. Examples:
-
-- `Asha took all 3 camels`
-- `Belen traded 2 cards for Diamond + Gold`
-- `Asha sold 4 Spice and earned 5 tokens`
-
-The two existing corner logs remain, but become secondary history. Opening a
-log must not cover the market or confirmation controls. Animations and the
-latest-action text should be driven by the same `GameActivity`, so they cannot
-describe different actions.
-
-## Private phone controller
-
-The phone should remain a private hand, not a miniature game board. Improve it
-as the first half of a two-device interaction:
-
-- make `Your turn` the dominant header state and dim selection controls while
-  waiting;
-- keep all cards at a stable square size and overlap/fan only when space is
-  constrained;
-- group goods by kind without changing their stable identity;
-- show a numbered selection tray above the hand rather than only `N selected`;
-- label loaded cards with their destination number and `On table`;
-- show the exact herd count and individual selectable camel cards;
-- after a selection, replace generic instructions with one explicit next step:
-  `Now tap a dashed market slot` or `Now tap the Spice token stack`;
-- mirror pending draw, exchange, and round-complete states from the persisted
-  log immediately;
-- keep exact earned token values and score exclusively in this private view
-  during the round.
-
-The phone should never require scrolling to reach the cards needed for the
-current action on common portrait sizes. If seven goods plus the herd cannot
-fit at full size, use controlled overlap before introducing scroll.
-
-## Turn, orientation, and shared information
-
-Make the active player unmistakable from either seat:
-
-- illuminate the whole active edge with a warm, restrained table-light effect;
-- point a central turn marker toward the active edge;
-- use `Your turn` on the active-oriented edge and `{name}'s turn` on the other;
-- give staged actions a distinct amber state and syncing/errors a distinct red
-  state; do not reuse these colors for ordinary decoration.
-
-The shared display may show:
-
-- player names, turn, hand counts, physical herd, seals, and token counts;
-- market, deck count, supplies, staged public destinations, and completed
-  actions;
-- number of face-down exchange returns once the player deliberately places
-  them on the table.
-
-It must not show:
-
-- private card faces or kinds before they enter the market;
-- exact values of owned tokens during the round;
-- disabled/grey token piles based on cards in either private hand;
-- bonus-token values before or after they are privately awarded.
-
-## Joining and recovery
-
-Define the routes explicitly:
-
-- `/tt/` creates a new random tabletop game.
-- `/tt/?gameId=ABCDE` attaches the display to an existing **tabletop** game.
-- `/hand/?gameId=ABCDE&seat=1` and `seat=2` remain the private controllers.
-
-If a supplied game exists but is standard or bot mode, show a clear message
-instead of creating a new room or trying to convert it. If it does not exist,
-offer `Create this tabletop` rather than silently choosing another code.
-
-On reconnect, the table should replay directly into its current state. Show QR
-codes only for empty seats, and preserve the existing game code prominently
-during setup. Once play begins, move the code, connection state, and build hash
-into a small `Table info` popover opened from neutral side controls. A red
-offline indicator may remain visible because it requires action; normal synced
-status should not occupy the play surface.
-
-## Round and game summaries
-
-Continue using the shared `GameSummary` data and score breakdown, but provide a
-tabletop presentation that is legible from both seats:
-
-- render the same detailed result in two mirrored orientations;
-- show every collected goods token, bonus token, camel award, total, seals,
-  and any tiebreak explanation;
-- keep one shared data model so ordinary, tabletop, and private views cannot
-  disagree;
-- place `Open next round` or `Rematch` controls near both player edges, with a
-  single idempotent action underneath;
-- preserve the no-scroll constraint at the target tabletop resolutions.
-
-## Visual language
-
-Favor physical state over application chrome:
-
-- cards, chips, piles, slots, and table felt carry the hierarchy;
-- borders define real placement zones, not large rectangular panels;
-- a dashed outline always means `a physical piece can be placed here`;
-- gold means active or ready to commit, never merely decorative;
-- face-down pieces retain the same dimensions as their face-up versions;
-- disabled controls remain visually present unless hiding them cannot reveal
-  private state;
-- instructional prose is replaced by short verbs adjacent to the next touch.
-
-## Proposed implementation sequence
-
-1. **Reconnectable tabletop shell**
-   - separate new-table and attach-table initialization;
-   - add `/tt/?gameId=` recovery and explicit incompatible-room errors;
-   - add setup, reconnecting, active, offline, and fatal-error visual states.
-2. **Physical table geometry**
-   - remove the right rail and large player panels;
-   - introduce one card-size variable and overlapping edge hands;
-   - build the shared horizontal goods bank and bonus/deck cluster.
-3. **Oriented action docks**
-   - centralize choose, staged draw, staged exchange, confirm, and cancel UI;
-   - strengthen active-player and pending-action states.
-4. **Exchange and sale choreography**
-   - make exchange silhouettes card-size;
-   - add numbered phone selections and matching table placements;
-   - add neutral sale guidance without leaking hand contents.
-5. **Feedback and summaries**
-   - add mirrored latest-action strips;
-   - refine logs, token-back trays, animations, and dual-orientation summaries;
-   - move ordinary diagnostics into `Table info`.
-6. **Regression coverage**
-   - add state-specific visual fixtures, geometry assertions, privacy checks,
-     recovery coverage, and reduced-motion behavior.
-
-Each step should be independently reviewable and should preserve a playable
-table rather than landing a partially converted layout.
+1. Extract a stable five-slot market model and component, preserving slot identity through draws, exchanges, pending reveal, and animation.
+2. Extract one token-stack component that supports vertical and horizontal spread and use it for ordinary and tabletop public supplies.
+3. Replace the ordinary desktop four-quadrant grid with match bar, opponent strip, public workspace, action dock, private tray, and latest-action footer.
+4. Add the narrow composition as responsive styling over the same component tree; do not create a separate phone rules surface.
+5. Move selection, pending draw, exchange, and sale summaries into the contextual dock.
+6. Connect existing click, drag, animation, remote action, bot action, and game-log behavior to the new stable regions.
+7. Add the two tabletop token views and permanent slot coordinates, then evaluate the optional turn-facing rotation.
+8. Add visual coverage for idle, selected, staged exchange, pending draw, opponent turn, round summary, and game summary on desktop and phone.
 
 ## Acceptance criteria
 
-### Geometry and responsiveness
-
-- Market, deck, public hand, herd, exchange-return, and animated cards have the
-  same bounding-box dimensions.
-- Five market slots retain their positions through draws and exchanges.
-- Seven-card hands fit through overlap without shrinking individual cards.
-- Every primary tabletop target is at least 56 by 56 CSS pixels.
-- Both 16:9 landscape and the existing 1280 by 1000 tabletop fixture fit with
-  no horizontal or vertical document scrolling.
-- Token stacks are within comparable reach of both seated players.
-
-### Interaction
-
-- A first-time player can complete draw-one, draw-camels, exchange, and sale by
-  following only the current phone/table prompts.
-- The active player and current staged action are identifiable from either
-  side at a glance.
-- Draw confirmation does not reveal a replacement card before commit.
-- Cancelling a staged draw or exchange restores the exact previous slots and
-  selections.
-- Every committed action produces a source-to-destination animation and an
-  immediately visible latest-action description.
-
-### Privacy
-
-- The table never renders private hand faces or exact owned-token values.
-- Token-stack appearance does not reveal whether a player can sell a kind.
-- Table-visible selection state contains no private card kind before a
-  committed exchange or sale reveals it by rule.
-
-### Recovery and accessibility
-
-- Reloading `/tt/?gameId=ABCDE` reconnects to the same tabletop game without
-  appending a second creation event.
-- QR links return to the same seats after a phone reconnect.
-- All actions remain keyboard accessible and have meaningful accessible names.
-- Reduced-motion mode settles pieces directly into the same final slots.
-- Offline and fatal states are distinguishable without using color alone.
-
-## Review decisions
-
-The recommended default is one centered horizontal token bank. The main
-alternative is two mirrored visual banks backed by the same logical supplies;
-that improves orientation but makes the physical inventory look duplicated.
-
-The recommended sale behavior is to retain the existing deliberate one-tap
-sale after clear guidance. Adding a cancellable sale preview would reduce
-mistakes but would also publicly expose a proposed private sale before it is
-committed.
-
-The recommended summary is a dual-orientation presentation of one shared
-component model, rather than rotating the entire result toward whichever
-player won.
+- Ordinary desktop and phone match the hierarchy and state transitions shown in the proposed screenshots.
+- The supported desktop and phone viewports have no page scrolling or clipped actionable content.
+- Market cards and return targets never reposition when a card is selected, loaded, drawn, exchanged, revealed, or replaced.
+- All public token values remain visible without dominating the phone viewport.
+- The opponent's card count, herd, and token count are immediately legible without exposing token values.
+- Hand cards, herd cards, market cards, and in-flight cards preserve a convincing physical size and aspect ratio.
+- Click and drag interactions converge on the same staged state and can be cancelled safely.
+- Pending single-card and camel draws retain their existing confirm/undo semantics and global visibility.
+- Bot and remote-player actions animate through the same destinations as local actions.
+- The latest action and full game log remain reachable in every state.
+- Keyboard focus, accessible names, contrast, 44-pixel touch targets, and reduced-motion behavior are verified alongside the visual tests.
