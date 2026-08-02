@@ -9,6 +9,7 @@ import {
 
 export type Good = 'diamond' | 'gold' | 'silver' | 'cloth' | 'spice' | 'leather';
 export type CardKind = Good | 'camel';
+export type RoundTieBreak = 'score' | 'bonus-tokens' | 'goods-tokens' | 'non-starter';
 
 export interface Card {
   id: string;
@@ -33,6 +34,7 @@ export interface RoundState {
   scores: Record<string, ScoreBreakdown> | null;
   winnerUid: string | null;
   loserUid: string | null;
+  tieBreak: RoundTieBreak | null;
   deck: Card[];
   market: Card[];
   hands: Record<string, Card[]>;
@@ -58,7 +60,7 @@ export interface RoundResolution {
   scores: Record<string, ScoreBreakdown>;
   winnerUid: string;
   loserUid: string;
-  tieBreak: 'score' | 'bonus-tokens' | 'goods-tokens' | 'non-starter';
+  tieBreak: RoundTieBreak;
 }
 
 export interface GameState extends LobbyState {
@@ -204,6 +206,7 @@ export function setupRound(playerUids: string[], seed: string, activeUid: string
     scores: null,
     winnerUid: null,
     loserUid: null,
+    tieBreak: null,
     deck,
     market,
     hands,
@@ -319,6 +322,7 @@ export function reduceGame(events: GameEvent[]): GameState {
     round.scores = resolution.scores;
     round.winnerUid = resolution.winnerUid;
     round.loserUid = resolution.loserUid;
+    round.tieBreak = resolution.tieBreak;
     seals[resolution.winnerUid] += 1;
     if (seals[resolution.winnerUid] >= 2) winnerUid = resolution.winnerUid;
     return {

@@ -35,6 +35,7 @@ describe('deterministic Jaipur setup', () => {
     expect(cardCount(round)).toBe(55);
     expect(Object.values(round.goodsTokens).flat()).toHaveLength(38);
     expect(Object.values(round.bonusTokens).flat()).toHaveLength(18);
+    expect(round.tieBreak).toBeNull();
   });
 });
 

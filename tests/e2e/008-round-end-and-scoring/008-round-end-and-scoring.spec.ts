@@ -35,14 +35,18 @@ test('a production-size round scores and resets for its loser', async ({ browser
         }
       },
       {
-        spec: 'Goods, bonuses, camels, totals, bonus values, and herds are public',
+        spec: 'Every collected token is revealed with its value',
         check: async () => {
           await expect(page.locator('.scorecards')).toContainText('Goods');
-          await expect(page.locator('.scorecards')).toContainText('Bonuses');
-          await expect(page.locator('.scorecards')).toContainText('Camels');
+          await expect(page.locator('.scorecards')).toContainText('Bonus value');
+          await expect(page.locator('.scorecards')).toContainText('Camel bonus');
           await expect(page.locator('.scorecards')).toContainText('Total');
+          await expect(page.locator('.scorecards')).toContainText('Goods tokens:');
           await expect(page.locator('.scorecards')).toContainText('Bonus tokens:');
           await expect(page.locator('.scorecards')).toContainText('Herd:');
+          await expect(page.locator('[data-token-ledger]')).toHaveCount(2);
+          expect(await page.locator('[data-collected-goods-token]').count()).toBeGreaterThan(0);
+          await expect(page.locator('[data-collected-camel-token]')).toHaveCount(1);
         }
       },
       {
