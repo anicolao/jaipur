@@ -1,0 +1,95 @@
+import { expect, test } from '@playwright/test';
+import { e2eRoomCode } from '../helpers/room-code';
+import { TestStepHelper } from '../helpers/test-step-helper';
+
+test('one client creates and plays against a computer opponent', async ({ page }, testInfo) => {
+  const gameId = e2eRoomCode(`bot-013-${testInfo.project.name}`);
+  const steps = new TestStepHelper(page, testInfo);
+  steps.setMetadata(
+    'Client-controlled computer opponent',
+    'A single browser connection owns a normal human seat and locally drives the logical computer seat.'
+  );
+
+  await page.addInitScript((roomCode) => {
+    const original = crypto.getRandomValues.bind(crypto);
+    crypto.getRandomValues = ((array: ArrayBufferView) => {
+      if (array instanceof Uint8Array && array.length === roomCode.length) {
+        array.set([...roomCode].map((letter) => letter.charCodeAt(0) - 65));
+        return array;
+      }
+      return original(array);
+    }) as typeof crypto.getRandomValues;
+  }, gameId);
+  await page.goto('/?seed=fixed-bot-013');
+  await page.getByLabel('Your trader name').fill('Asha');
+  await page.getByRole('button', { name: 'Play vs computer' }).click();
+  await expect(page).toHaveURL(new RegExp(`[?&]gameId=${gameId}(?:&|$)`));
+
+  await steps.step('computer-seated', {
+    description: 'The computer occupies the ready second seat',
+    verifications: [
+      {
+        spec: 'The generated room contains only Asha and the Maharaja computer',
+        check: async () => {
+          await expect(page.getByLabel('Game lobby').getByText('Asha', { exact: true })).toBeVisible();
+          await expect(page.getByLabel('Game lobby').getByText('Maharaja', { exact: true })).toBeVisible();
+          await expect(page.getByLabel('Game lobby')).toContainText('Computer · Apprentice · Ready');
+        }
+      },
+      {
+        spec: 'Only the human needs to ready before opening the market',
+        check: async () => {
+          await expect(page.getByRole('button', { name: 'Ready to trade' })).toBeVisible();
+          await expect(page.getByRole('button', { name: 'Open the market' })).toHaveCount(0);
+        }
+      }
+    ]
+  });
+
+  await page.getByRole('button', { name: 'Ready to trade' }).click();
+  await page.getByRole('button', { name: 'Open the market' }).click();
+  await expect(page.getByText("Asha's turn")).toBeVisible();
+  await page.locator('.market button.card-action:not(.camel):not(:disabled)').first().click();
+  await page.locator('[data-confirm-draw]').click();
+  await expect(page.locator('.game-log')).toContainText(/Maharaja.*(took|traded|sold)/);
+  await expect(page.getByText("Asha's turn")).toBeVisible();
+  await page.locator('.action-card-flight, .token-flight').evaluateAll((flights) => {
+    for (const flight of flights) {
+      for (const animation of flight.getAnimations()) animation.finish();
+    }
+  });
+  await expect(page.locator('.action-card-flight, .token-flight')).toHaveCount(0);
+
+  await steps.step('computer-moved', {
+    description: 'The computer chooses and records a legal reply',
+    verifications: [
+      {
+        spec: 'Play returns to Asha after the local computer completes one turn',
+        check: async () => {
+          await expect(page.getByText("Asha's turn")).toBeVisible();
+          await expect(page.getByText('Considering the market…')).toHaveCount(0);
+        }
+      },
+      {
+        spec: 'The shared append-only game log attributes the reply to Maharaja',
+        check: async () => {
+          await expect(page.locator('.game-log')).toContainText(/Maharaja.*(took|traded|sold)/);
+        }
+      },
+      {
+        spec: 'The opponent remains a normal concealed hand and exact public herd',
+        check: async () => {
+          await expect(page.locator('.opponent')).toContainText('Maharaja');
+          const opponentCards = await page.locator('.opponent-hand .opponent-card-back').count();
+          await expect(page.locator('.opponent')).toContainText(`${opponentCards} / 7 cards`);
+          await expect(page.locator('.opponent-herd')).toHaveAttribute(
+            'aria-label',
+            /Maharaja has \d+ camels? in their herd/
+          );
+        }
+      }
+    ]
+  });
+
+  steps.generateDocs();
+});

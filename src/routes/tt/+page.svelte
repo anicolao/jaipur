@@ -156,6 +156,7 @@
       case 'tabletop/created': return 'opened the tabletop';
       case 'tabletop/intent': return 'adjusted a private selection';
       case 'game/created': return 'opened the bazaar';
+      case 'bot/added': return 'joined as a client-controlled computer';
       case 'player/joined': return 'joined the table';
       case 'player/ready': return activity.ready ? 'is ready' : 'is no longer ready';
       case 'round/started': return `opened round ${activity.roundNumber ?? ''}`;
