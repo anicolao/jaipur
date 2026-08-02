@@ -7,6 +7,7 @@ import {
   listLegalActions,
   type JaipurAction
 } from './jaipur-bot';
+import { searchMaharajaAction } from './jaipur-bot-search';
 import {
   isLegalExchange,
   isLegalSale,
@@ -121,5 +122,25 @@ describe('client-controlled Jaipur bot', () => {
       turnNumber: 1
     });
     expect(botActionEvent(observation, action).type).toMatch(/^cards\//);
+  });
+
+  it('searches paired hidden-state samples deterministically without emitting an illegal move', () => {
+    const state = botGame('bot-maharaja-choice');
+    const observation = createBotObservation(state)!;
+    const options = {
+      samples: 3,
+      candidateLimit: 10,
+      rolloutTurns: 30,
+      timeLimitMs: Number.POSITIVE_INFINITY,
+      now: () => 0
+    };
+    const first = searchMaharajaAction(observation, options);
+    const second = searchMaharajaAction(structuredClone(observation), options);
+
+    expect(first).toEqual(second);
+    expect(first.completedSamples).toBe(3);
+    expect(first.simulations).toBe(first.candidates * 3);
+    expect(first.action).not.toBeNull();
+    expectLegal(state, first.action!);
   });
 });
