@@ -64,6 +64,11 @@ test('the active trader takes one good and refills the market', async ({ browser
     for (const flight of flights) flight.getAnimations()[0]?.pause();
   });
   await expect(rival.locator('.action-notice')).toContainText(/^Asha took /);
+  await expect(rival.locator('[data-latest-action]')).toContainText(/^Latest\s+Asha took /);
+  await expect(rival.locator('[data-latest-action]')).toHaveAttribute(
+    'data-latest-activity-type',
+    'cards/taken-one'
+  );
 
   const observerLog = rival.locator('.game-log');
   await observerLog.locator('summary').click();

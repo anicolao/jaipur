@@ -329,6 +329,10 @@
   async function playBotTurn(expectedKey: string) {
     botTurnTimer = undefined;
     if (!repository || currentBotTurnKey() !== expectedKey) return;
+    if (actionCardFlights.length > 0 || tokenFlights.length > 0) {
+      botTurnTimer = setTimeout(() => void playBotTurn(expectedKey), 100);
+      return;
+    }
     const observation = createBotObservation(lobby);
     const action = observation ? chooseBotAction(observation) : null;
     if (!observation || !action) {
@@ -1854,6 +1858,20 @@
         {actionNotice.text}
       </p>
     {/if}
+    {#if !shellOnly && lobby.round && lobby.activity.length > 0}
+      {@const latestActivity = lobby.activity.at(-1)!}
+      <p
+        class="latest-action"
+        data-latest-action
+        data-latest-activity-id={latestActivity.id}
+        data-latest-activity-type={latestActivity.type}
+        aria-live="polite"
+        title={activityText(latestActivity)}
+      >
+        <span>Latest</span>
+        <strong>{activityText(latestActivity)}</strong>
+      </p>
+    {/if}
     {#if !shellOnly && lobby.activity.length > 0}
       <details class="game-log">
         <summary>Game log <span>{lobby.activity.length}</span></summary>
@@ -2164,6 +2182,43 @@
     left: 0.7rem;
     color: #183a37;
     text-align: left;
+  }
+  .latest-action {
+    position: absolute;
+    z-index: 155;
+    bottom: 0.3rem;
+    left: 8.35rem;
+    display: flex;
+    width: min(34rem, calc(100% - 17rem));
+    min-width: 0;
+    min-height: 44px;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0;
+    padding: 0.35rem 0.65rem;
+    overflow: hidden;
+    border: 1px solid #8e826b;
+    border-radius: 99rem;
+    background: rgb(255 250 238 / 96%);
+    box-shadow: 0 0.18rem 0.45rem rgb(24 58 55 / 18%);
+    color: #183a37;
+    font-size: 0.75rem;
+    line-height: 1.1;
+    pointer-events: none;
+  }
+  .latest-action > span {
+    flex: 0 0 auto;
+    color: #725217;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .latest-action > strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .game-log > summary {
     display: flex;
@@ -3366,6 +3421,15 @@
     .hero.compact {
       padding: 0.35rem 0.35rem 3.2rem;
     }
+    .latest-action {
+      right: 7.4rem;
+      left: 8.35rem;
+      width: auto;
+      padding-inline: 0.5rem;
+    }
+    .latest-action > span {
+      display: none;
+    }
     .join-card {
       grid-template-columns: 1fr;
       gap: 0.55rem;
@@ -3521,6 +3585,12 @@
     }
     .hero.compact {
       padding: 0.25rem 0.4rem 2.5rem;
+    }
+    .latest-action {
+      right: 7.4rem;
+      left: 8.35rem;
+      width: auto;
+      min-height: 36px;
     }
     .table {
       --card-size: clamp(3.25rem, 13.5vh, 3.5rem);
