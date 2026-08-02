@@ -9,7 +9,7 @@ Both traders complete an ordinary full round, reveal its exact score, and open a
 **Verifications:**
 
 - [x] Exactly one trader earns the first seal
-- [x] Goods, bonuses, camels, totals, bonus values, and herds are public
+- [x] Every collected token is revealed with its value
 - [x] Both clients converge on the same winner and score review
 
 ## The previous loser starts with reset round components

@@ -13,8 +13,9 @@
   } = $props();
 
   const isBonus = (kind: Token['kind']) => kind.startsWith('bonus-');
-  const artKind = (kind: Token['kind']): Good | 'card-back' => {
-    if (isBonus(kind) || kind === 'camel') return 'card-back';
+  const artKind = (kind: Token['kind']): Good | 'camel' | 'card-back' => {
+    if (isBonus(kind)) return 'card-back';
+    if (kind === 'camel') return 'camel';
     return kind as Good;
   };
   const rimLabel = (kind: Token['kind'], value: number) =>
