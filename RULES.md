@@ -72,11 +72,12 @@ nothing was duplicated or lost.
    previous round starts.
 
 Camels in a herd are not part of a player's hand and do not count toward the
-seven-card hand limit. The physical rules do not require a player to disclose
-their camel count. The trustworthy browser UI should therefore show the owner
-their exact herd and show the opponent only that a herd exists, even though
-previous public actions and the shared event stream may make the count
-inferable.
+seven-card hand limit. The physical rules do not require a player to display a
+herd counter, but its size is inferable: the initial herd is five minus the
+player's post-deal hand size, and every later camel take or exchange return is
+public. The trustworthy browser UI may still present the opponent's herd as a
+physical card stack rather than a numeric counter, while rules engines and
+players can derive the exact count from public information.
 
 ## A turn
 
