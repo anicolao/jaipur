@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <base href="http://127.0.0.1:5185/" />
+    <title>Jaipur UI fixes mockup</title>
+    <style>
+      @font-face {
+        font-family: 'Atkinson Hyperlegible';
+        src: url('/node_modules/@fontsource/atkinson-hyperlegible/files/atkinson-hyperlegible-latin-400-normal.woff2') format('woff2');
+        font-weight: 400;
+      }
+      @font-face {
+        font-family: 'Atkinson Hyperlegible';
+        src: url('/node_modules/@fontsource/atkinson-hyperlegible/files/atkinson-hyperlegible-latin-700-normal.woff2') format('woff2');
+        font-weight: 700;
+      }
+      @font-face {
+        font-family: 'Cormorant Garamond';
+        src: url('/node_modules/@fontsource/cormorant-garamond/files/cormorant-garamond-latin-700-normal.woff2') format('woff2');
+        font-weight: 700;
+      }
+
+      :root {
+        font-family: 'Atkinson Hyperlegible', sans-serif;
+        color: #173c38;
+        background: #ddcda9;
+        font-synthesis: none;
+      }
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+      body { background: radial-gradient(circle at 50% 38%, #fffaf0 0, #ead9b5 78%); }
+      button { font: inherit; }
+      button:focus-visible { outline: 3px solid #f2b84b; outline-offset: 2px; }
+      .game {
+        --card-size: 7rem;
+        --panel: rgb(255 250 240 / 94%);
+        --muted-panel: #ede0c2;
+        --line: #a99570;
+        --green: #173c38;
+        --green-2: #315f58;
+        --red: #ad432d;
+        --gold: #db921f;
+        position: fixed;
+        inset: 0;
+        display: grid;
+        grid-template-rows: 3.65rem 7.6rem minmax(0, 1fr) 4.9rem 13.6rem 2.8rem;
+        gap: 0.45rem;
+        padding: 0.5rem;
+        background:
+          linear-gradient(rgb(255 250 240 / 62%), rgb(255 250 240 / 62%)),
+          url('/components/card-back.webp') center / 31rem auto;
+      }
+      .panel {
+        min-width: 0;
+        min-height: 0;
+        border: 1px solid var(--line);
+        border-radius: 0.9rem;
+        background: var(--panel);
+        box-shadow: 0 0.22rem 0.65rem rgb(25 45 40 / 13%);
+      }
+      h1, h2, h3, p { margin: 0; }
+      h1, h2 { font-family: 'Cormorant Garamond', serif; }
+      h2 { font-size: 1.65rem; line-height: 1; }
+      .eyebrow {
+        color: var(--red);
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      .matchbar {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center;
+        padding: 0.4rem 0.8rem;
+        background: #f2e5c8;
+      }
+      .turn-heading { display: flex; align-items: center; gap: 0.7rem; }
+      .turn-lamp {
+        display: grid;
+        width: 2.35rem;
+        height: 2.35rem;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--red);
+        color: white;
+        box-shadow: 0 0 0 0.25rem rgb(219 146 31 / 28%);
+        font-weight: 700;
+      }
+      .turn-heading strong { display: block; font-size: 1.15rem; }
+      .deck-status { display: flex; align-items: center; gap: 0.45rem; }
+      .deck-status img { width: 2.55rem; height: 2.55rem; border: 2px solid var(--green-2); border-radius: 0.42rem; }
+      .deck-status span { display: grid; font-size: 0.72rem; }
+      .deck-status b { font-size: 1rem; }
+      .match-score { display: flex; align-items: center; justify-content: flex-end; gap: 1.1rem; }
+      .score-player { display: grid; gap: 0.08rem; font-size: 0.72rem; text-align: right; }
+      .score-player strong { font-size: 0.88rem; }
+      .seals { display: flex; justify-content: flex-end; gap: 0.18rem; }
+      .seal {
+        width: 1.22rem;
+        height: 1.22rem;
+        border-radius: 50%;
+        background: #d7d1c3;
+        box-shadow: inset 0 0 0 1px #c4baa3;
+      }
+      .seal.earned { background: url('/components/seal.webp') center / cover; }
+      .opponent {
+        display: grid;
+        grid-template-columns: minmax(9rem, 0.8fr) minmax(0, 1.8fr) minmax(8rem, 0.75fr) minmax(7rem, 0.65fr);
+        align-items: center;
+        gap: 1rem;
+        padding: 0.55rem 1rem;
+        background: #eadbbc;
+      }
+      .opponent-name h2 { font-size: 1.45rem; }
+      .opponent-name strong { color: var(--red); font-size: 0.76rem; }
+      .back-fan, .herd-pile, .owned-token-pile { position: relative; height: var(--card-size); }
+      .back-fan { width: calc(var(--card-size) + 6.5rem); }
+      .back-fan img {
+        position: absolute;
+        top: 0;
+        left: calc(var(--index) * 1.25rem);
+        width: var(--card-size);
+        height: var(--card-size);
+        border: 2px solid var(--green-2);
+        border-radius: 0.58rem;
+        object-fit: cover;
+      }
+      .public-group { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 0.5rem; }
+      .public-group > span { display: grid; font-size: 0.7rem; }
+      .public-group strong { font-size: 0.88rem; }
+      .herd-pile { width: calc(var(--card-size) + 2.2rem); }
+      .herd-pile img {
+        position: absolute;
+        left: calc(var(--index) * 0.72rem);
+        width: var(--card-size);
+        height: var(--card-size);
+        border: 2px solid var(--red);
+        border-radius: 0.58rem;
+        object-fit: cover;
+        transform: rotate(calc((var(--index) - 1) * 2deg));
+      }
+      .owned-token-pile { width: 4.7rem; height: 3.3rem; }
+      .token-back {
+        position: absolute;
+        top: calc(var(--index) * 0.18rem);
+        left: calc(var(--index) * 0.22rem);
+        width: 2.7rem;
+        height: 2.7rem;
+        border: 0.18rem solid #f4e5b5;
+        border-radius: 50%;
+        background: var(--green-2);
+        box-shadow: 0 0.15rem 0.25rem rgb(0 0 0 / 20%);
+      }
+      .workspace { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr) 22rem; gap: 0.45rem; }
+      .market, .bank { padding: 0.65rem 0.8rem; }
+      .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 1rem; }
+      .section-heading p { color: #4e655f; font-size: 0.75rem; }
+      .market-slots {
+        display: grid;
+        height: calc(100% - 2.2rem);
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        align-items: center;
+        gap: 0.75rem;
+        padding-top: 0.35rem;
+      }
+      .market-slot {
+        display: grid;
+        min-width: 0;
+        grid-template-rows: var(--card-size) var(--card-size);
+        place-items: center;
+        gap: 0.48rem;
+      }
+      .piece {
+        position: relative;
+        width: var(--card-size);
+        height: var(--card-size);
+        padding: 0.18rem;
+        overflow: hidden;
+        border: 2px solid var(--green-2);
+        border-radius: 0.62rem;
+        background: var(--green);
+        color: white;
+        box-shadow: 0 0.25rem 0.42rem rgb(0 0 0 / 19%);
+      }
+      .piece.camel { border-color: var(--red); }
+      .piece img { width: 100%; height: 100%; border-radius: 0.42rem; object-fit: cover; }
+      .piece > strong {
+        position: absolute;
+        right: 0.15rem;
+        bottom: 0.15rem;
+        left: 0.15rem;
+        padding: 0.16rem;
+        background: rgb(23 60 56 / 89%);
+        font-size: 0.7rem;
+        text-align: left;
+      }
+      .return-target {
+        position: relative;
+        display: grid;
+        width: var(--card-size);
+        height: var(--card-size);
+        place-items: center;
+        padding: 0.25rem;
+        border: 2px dashed #8a7d64;
+        border-radius: 0.62rem;
+        background: rgb(255 250 240 / 72%);
+        color: #5e675f;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-align: center;
+      }
+      .return-target .plus { font-size: 1.35rem; line-height: 1; }
+      .return-target.spacer { visibility: hidden; }
+      .return-target.loaded {
+        border-style: solid;
+        border-color: var(--gold);
+        background: #fff0c7;
+        box-shadow: 0 0 0 0.2rem rgb(219 146 31 / 21%);
+      }
+      .return-target.loaded img { width: 100%; height: 100%; border-radius: 0.42rem; object-fit: cover; }
+      .return-target.loaded b {
+        position: absolute;
+        top: 0.2rem;
+        left: 0.2rem;
+        display: grid;
+        width: 1.4rem;
+        height: 1.4rem;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--gold);
+        color: #173c38;
+      }
+      .exchange-only, .game[data-state='exchange'] .turn-only { display: none; }
+      .game[data-state='exchange'] .exchange-only { display: grid; }
+      .bank { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+      .bank-grid { display: grid; min-height: 0; grid-template-columns: repeat(3, 1fr); gap: 0.42rem; padding-top: 0.45rem; }
+      .bank-stack {
+        display: grid;
+        min-width: 0;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        place-items: center;
+        gap: 0.1rem;
+        padding: 0.28rem;
+        border: 1px solid #c3b38f;
+        border-radius: 0.65rem;
+        background: #f4e7ca;
+        color: var(--green);
+      }
+      .bank-stack > strong { font-size: 0.72rem; }
+      .bank-stack > small { color: #53665f; font-size: 0.62rem; }
+      .chip-spread { position: relative; width: 3.25rem; height: 100%; min-height: 5rem; }
+      .chip {
+        position: absolute;
+        z-index: calc(20 - var(--index));
+        top: calc(var(--index) * 0.72rem);
+        left: 0;
+        width: 3.25rem;
+        height: 3.25rem;
+        overflow: hidden;
+        border: 0.22rem solid var(--chip-color, #315f58);
+        border-radius: 50%;
+        background: #173c38;
+        box-shadow: 0 0.2rem 0.3rem rgb(0 0 0 / 23%);
+      }
+      .chip img { width: 100%; height: 100%; object-fit: cover; }
+      .chip b {
+        position: absolute;
+        right: 50%;
+        bottom: 0.02rem;
+        transform: translateX(50%);
+        color: white;
+        font-size: 1rem;
+        font-weight: 700;
+        line-height: 1;
+        text-shadow: 0 1px 2px #000, 0 0 4px #000, 0 0 2px #000;
+      }
+      .diamond { --chip-color: #b3283a; }
+      .gold { --chip-color: #bf8200; }
+      .silver { --chip-color: #647984; }
+      .cloth { --chip-color: #75519a; }
+      .spice { --chip-color: #337b50; }
+      .leather { --chip-color: #8f542e; }
+      .action-dock {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.5rem 0.75rem;
+        border: 2px solid var(--gold);
+        background: #fff3cf;
+      }
+      .dock-copy { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0.7rem; }
+      .dock-step {
+        display: grid;
+        width: 2.35rem;
+        height: 2.35rem;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--gold);
+        font-weight: 700;
+      }
+      .dock-copy > div { display: grid; gap: 0.08rem; }
+      .dock-copy strong { font-size: 1rem; }
+      .dock-copy span { color: #53645d; font-size: 0.72rem; }
+      .dock-actions { display: flex; align-items: center; gap: 0.45rem; }
+      .dock-actions button {
+        min-height: 2.8rem;
+        padding: 0.4rem 0.85rem;
+        border: 1px solid var(--green-2);
+        border-radius: 99rem;
+        background: white;
+        color: var(--green);
+        font-weight: 700;
+      }
+      .dock-actions .primary { border-color: var(--red); background: var(--red); color: white; }
+      .game[data-state='exchange'] .dock-actions.exchange-only { display: flex; }
+      .player {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        padding: 0.55rem 0.8rem;
+        border: 2px solid var(--gold);
+        background: #fff9e9;
+      }
+      .player-heading { display: flex; align-items: baseline; justify-content: space-between; }
+      .player-heading > div { display: flex; align-items: baseline; gap: 0.55rem; }
+      .player-heading p { color: #53645d; font-size: 0.72rem; }
+      .player-content { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr) 13rem 11rem; align-items: center; gap: 0.8rem; }
+      .hand { display: flex; min-width: 0; align-items: center; padding-left: 0.25rem; }
+      .hand .piece + .piece { margin-left: -0.8rem; }
+      .game[data-state='exchange'] .hand .piece.selected {
+        z-index: 3;
+        border-color: var(--gold);
+        box-shadow: 0 0 0 0.22rem var(--gold), 0 0.25rem 0.42rem rgb(0 0 0 / 19%);
+        transform: translateY(-0.25rem);
+      }
+      .game[data-state='exchange'] .piece.selected img {
+        opacity: 0.38;
+        filter: saturate(0.35);
+      }
+      .game[data-state='exchange'] .piece.selected::after {
+        position: absolute;
+        right: 0.2rem;
+        bottom: 0.2rem;
+        left: 0.2rem;
+        z-index: 3;
+        padding: 0.18rem;
+        border-radius: 0.25rem;
+        background: rgb(18 61 55 / 88%);
+        color: white;
+        content: 'On table';
+        font-size: 0.6rem;
+        font-weight: 700;
+        text-align: center;
+      }
+      .selection-number {
+        position: absolute;
+        z-index: 4;
+        top: 0.2rem;
+        left: 0.2rem;
+        display: none;
+        width: 1.5rem;
+        height: 1.5rem;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--gold);
+        color: var(--green);
+        font-weight: 700;
+      }
+      .game[data-state='exchange'] .selected .selection-number { display: grid; }
+      .private-group { display: grid; grid-template-rows: auto 1fr; gap: 0.25rem; }
+      .private-group header { display: flex; align-items: baseline; justify-content: space-between; font-size: 0.72rem; }
+      .private-group header strong { font-size: 0.8rem; }
+      .private-herd { display: flex; align-items: center; min-height: var(--card-size); padding-left: 0.15rem; }
+      .private-herd .piece + .piece { margin-left: -2.25rem; }
+      .game[data-state='exchange'] .private-herd .piece.selected { z-index: 3; border-color: var(--gold); box-shadow: 0 0 0 0.22rem var(--gold); transform: translateY(-0.25rem); }
+      .earned-chips { display: flex; min-height: 4rem; align-items: center; }
+      .earned-chips .chip { position: relative; left: auto; flex: 0 0 auto; }
+      .earned-chips .chip + .chip { margin-left: -0.6rem; }
+      .latest {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: 0.55rem;
+        padding: 0.35rem 0.75rem;
+        background: #f2e5c8;
+        font-size: 0.72rem;
+      }
+      .latest > b:first-child { color: var(--red); font-size: 0.62rem; letter-spacing: 0.08em; }
+      .latest button {
+        min-height: 2rem;
+        border: 1px solid #8c7e62;
+        border-radius: 99rem;
+        background: #fffaf0;
+        color: var(--green);
+        font-weight: 700;
+      }
+      .sync { color: #39714b; font-weight: 700; }
+      .game[data-state='turn'] .exchange-only,
+      .game[data-state='exchange'] .turn-only { display: none !important; }
+
+      @media (max-width: 600px) {
+        .game {
+          --card-size: 3.62rem;
+          grid-template-rows: 3.35rem 3.8rem 20rem 4.55rem minmax(0, 1fr) 2.45rem;
+          gap: 0.3rem;
+          padding: 0.35rem;
+          background-size: auto, 22rem auto;
+        }
+        .panel { border-radius: 0.7rem; }
+        h2 { font-size: 1.25rem; }
+        .matchbar { grid-template-columns: minmax(0, 1fr) auto auto; padding: 0.3rem 0.45rem; }
+        .turn-heading { gap: 0.45rem; }
+        .turn-lamp { width: 1.95rem; height: 1.95rem; font-size: 0.72rem; }
+        .turn-heading .eyebrow { display: none; }
+        .turn-heading strong { font-size: 0.95rem; }
+        .deck-status { gap: 0.25rem; }
+        .deck-status img { width: 2rem; height: 2rem; }
+        .deck-status span { font-size: 0.58rem; }
+        .deck-status b { font-size: 0.78rem; }
+        .match-score { gap: 0.35rem; }
+        .score-player { display: none; }
+        .seals { gap: 0.1rem; }
+        .seal { width: 1rem; height: 1rem; }
+        .opponent {
+          grid-template-columns: 5.2rem minmax(0, 1fr) 6.2rem 4.8rem;
+          gap: 0.25rem;
+          padding: 0.28rem 0.42rem;
+        }
+        .opponent-name h2 { font-size: 1rem; }
+        .opponent-name .eyebrow { display: none; }
+        .opponent-name strong { font-size: 0.62rem; }
+        .back-fan, .herd-pile { height: var(--card-size); }
+        .back-fan { width: 7.8rem; transform: scale(0.76); transform-origin: left center; }
+        .back-fan img { left: calc(var(--index) * 0.72rem); }
+        .public-group { grid-template-columns: 3.9rem minmax(0, 1fr); gap: 0.08rem; }
+        .opponent > .public-group:last-child { grid-template-columns: 2.25rem minmax(0, 1fr); }
+        .public-group > span { font-size: 0.55rem; }
+        .public-group strong { font-size: 0.64rem; }
+        .herd-pile { width: 3.9rem; transform: scale(0.68); transform-origin: left center; }
+        .herd-pile img { left: calc(var(--index) * 0.48rem); }
+        .owned-token-pile { width: 2.25rem; height: 2.25rem; transform: scale(0.7); transform-origin: left center; }
+        .workspace { display: grid; grid-template-columns: 1fr; grid-template-rows: 10.8rem minmax(0, 1fr); gap: 0.3rem; }
+        .market, .bank { padding: 0.38rem 0.42rem; }
+        .section-heading { align-items: center; }
+        .section-heading p { max-width: 15.5rem; overflow: hidden; font-size: 0.58rem; text-overflow: ellipsis; white-space: nowrap; }
+        .market-slots { height: calc(100% - 1.45rem); gap: 0.25rem; padding-top: 0.18rem; }
+        .market-slot { grid-template-rows: var(--card-size) var(--card-size); gap: 0.25rem; }
+        .piece { padding: 0.1rem; border-radius: 0.45rem; }
+        .piece img { border-radius: 0.3rem; }
+        .piece > strong { padding: 0.1rem; font-size: 0.5rem; }
+        .return-target { padding: 0.12rem; border-radius: 0.45rem; font-size: 0.5rem; }
+        .return-target .plus { font-size: 0.9rem; }
+        .return-target.loaded b { width: 1rem; height: 1rem; font-size: 0.62rem; }
+        .bank { grid-template-rows: auto 1fr; }
+        .bank .section-heading p { display: none; }
+        .bank-grid { grid-template-columns: repeat(3, 1fr); gap: 0.16rem; padding-top: 0.18rem; }
+        .bank-stack { grid-template-rows: auto minmax(0, 1fr); gap: 0; padding: 0.1rem; border-radius: 0.45rem; }
+        .bank-stack > strong { font-size: 0.5rem; }
+        .bank-stack > small { display: none; }
+        .chip-spread { width: 5.25rem; min-height: 2.15rem; height: 2.15rem; }
+        .chip-spread .chip { top: 0; left: calc(var(--index) * 0.38rem); width: 2.15rem; height: 2.15rem; border-width: 0.15rem; }
+        .chip-spread .chip b { right: 50%; bottom: 0; transform: translateX(50%); font-size: 0.68rem; }
+        .action-dock { gap: 0.35rem; padding: 0.35rem 0.42rem; }
+        .dock-copy { gap: 0.4rem; }
+        .dock-step { width: 1.9rem; height: 1.9rem; font-size: 0.68rem; }
+        .dock-copy strong { font-size: 0.75rem; }
+        .dock-copy span { max-width: 12.5rem; overflow: hidden; font-size: 0.56rem; text-overflow: ellipsis; white-space: nowrap; }
+        .dock-actions { gap: 0.2rem; }
+        .dock-actions button { min-height: 2.35rem; padding: 0.25rem 0.5rem; font-size: 0.62rem; }
+        .player { padding: 0.35rem 0.42rem; }
+        .player-heading h2 { font-size: 1.1rem; }
+        .player-heading p { font-size: 0.58rem; }
+        .player-content { grid-template-columns: minmax(0, 1fr) 6.8rem; grid-template-rows: 1fr 3.35rem; gap: 0.25rem; }
+        .hand { grid-column: 1; grid-row: 1 / 3; display: grid; grid-template-columns: repeat(2, var(--card-size)); align-content: center; gap: 0.3rem; padding: 0; }
+        .hand .piece + .piece { margin: 0; }
+        .private-group { gap: 0.08rem; }
+        .private-group header { font-size: 0.55rem; }
+        .private-group header strong { font-size: 0.61rem; }
+        .private-herd { min-height: var(--card-size); transform: scale(0.8); transform-origin: left center; }
+        .private-herd .piece + .piece { margin-left: -1.8rem; }
+        .earned { grid-column: 2; grid-row: 2; }
+        .earned-chips { min-height: 2.5rem; transform: scale(0.7); transform-origin: left center; }
+        .selection-number { width: 1.05rem; height: 1.05rem; font-size: 0.6rem; }
+        .latest { grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.3rem; padding: 0.24rem 0.42rem; font-size: 0.58rem; }
+        .latest > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .latest button { min-height: 1.8rem; padding: 0.2rem 0.45rem; font-size: 0.58rem; }
+        .sync { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="game" data-ui-fixes-mockup data-state="turn">
+      <header class="matchbar panel">
+        <div class="turn-heading">
+          <span class="turn-lamp">YOU</span>
+          <div><span class="eyebrow">Round 1</span><strong>Asha's turn</strong></div>
+        </div>
+        <div class="deck-status">
+          <img src="/components/card-back.webp" alt="" />
+          <span>Deck <b>39</b></span>
+        </div>
+        <div class="match-score">
+          <span class="score-player"><strong>Asha</strong><span>4 cards · 2 camels</span></span>
+          <span class="seals" aria-label="Asha has no seals"><i class="seal"></i><i class="seal"></i></span>
+        </div>
+      </header>
+
+      <section class="opponent panel" aria-label="Opponent public area">
+        <div class="opponent-name"><span class="eyebrow">Opponent</span><h2>Belen</h2><strong>6 / 7 cards</strong></div>
+        <div class="back-fan" aria-label="Six face-down cards">
+          <img style="--index:0" src="/components/card-back.webp" alt="" />
+          <img style="--index:1" src="/components/card-back.webp" alt="" />
+          <img style="--index:2" src="/components/card-back.webp" alt="" />
+          <img style="--index:3" src="/components/card-back.webp" alt="" />
+          <img style="--index:4" src="/components/card-back.webp" alt="" />
+          <img style="--index:5" src="/components/card-back.webp" alt="" />
+        </div>
+        <div class="public-group">
+          <div class="herd-pile">
+            <img style="--index:0" src="/components/camel.webp" alt="" />
+            <img style="--index:1" src="/components/camel.webp" alt="" />
+            <img style="--index:2" src="/components/camel.webp" alt="" />
+          </div>
+          <span>Herd<strong>3 camels</strong></span>
+        </div>
+        <div class="public-group">
+          <div class="owned-token-pile">
+            <i class="token-back" style="--index:0"></i><i class="token-back" style="--index:1"></i><i class="token-back" style="--index:2"></i>
+          </div>
+          <span>Earned<strong>8 tokens</strong></span>
+        </div>
+      </section>
+
+      <div class="workspace">
+        <section class="market panel">
+          <header class="section-heading">
+            <h2>Market</h2>
+            <p>Tap one good to draw it · tap any camel to take all three</p>
+          </header>
+          <div class="market-slots">
+            <div class="market-slot">
+              <button class="piece camel"><img src="/components/camel.webp" alt="" /><strong>Camel</strong></button>
+              <span class="return-target spacer" aria-hidden="true"></span>
+            </div>
+            <div class="market-slot">
+              <button class="piece camel"><img src="/components/camel.webp" alt="" /><strong>Camel</strong></button>
+              <span class="return-target spacer" aria-hidden="true"></span>
+            </div>
+            <div class="market-slot">
+              <button class="piece camel"><img src="/components/camel.webp" alt="" /><strong>Camel</strong></button>
+              <span class="return-target spacer" aria-hidden="true"></span>
+            </div>
+            <div class="market-slot">
+              <button class="piece"><img src="/components/spice.webp" alt="" /><strong>Spice</strong></button>
+              <button class="return-target turn-only"><span><span class="plus">＋</span><br />Return here</span></button>
+              <button class="return-target loaded exchange-only"><img src="/components/card-back.webp" alt="" /><b>1</b></button>
+            </div>
+            <div class="market-slot">
+              <button class="piece"><img src="/components/leather.webp" alt="" /><strong>Leather</strong></button>
+              <button class="return-target turn-only"><span><span class="plus">＋</span><br />Return here</span></button>
+              <button class="return-target loaded exchange-only"><img src="/components/card-back.webp" alt="" /><b>2</b></button>
+            </div>
+          </div>
+        </section>
+
+        <aside class="bank panel">
+          <header class="section-heading"><h2>Sell goods</h2><p>Select cards, then tap their stack</p></header>
+          <div class="bank-grid">
+            <button class="bank-stack diamond"><strong>Diamond</strong><span class="chip-spread"><i class="chip" style="--index:0"><img src="/components/diamond.webp" alt="" /><b>7</b></i><i class="chip" style="--index:1"><img src="/components/diamond.webp" alt="" /><b>7</b></i><i class="chip" style="--index:2"><img src="/components/diamond.webp" alt="" /><b>5</b></i><i class="chip" style="--index:3"><img src="/components/diamond.webp" alt="" /><b>5</b></i><i class="chip" style="--index:4"><img src="/components/diamond.webp" alt="" /><b>5</b></i></span><small>5 left</small></button>
+            <button class="bank-stack gold"><strong>Gold</strong><span class="chip-spread"><i class="chip" style="--index:0"><img src="/components/gold.webp" alt="" /><b>6</b></i><i class="chip" style="--index:1"><img src="/components/gold.webp" alt="" /><b>6</b></i><i class="chip" style="--index:2"><img src="/components/gold.webp" alt="" /><b>5</b></i><i class="chip" style="--index:3"><img src="/components/gold.webp" alt="" /><b>5</b></i><i class="chip" style="--index:4"><img src="/components/gold.webp" alt="" /><b>5</b></i></span><small>5 left</small></button>
+            <button class="bank-stack silver"><strong>Silver</strong><span class="chip-spread"><i class="chip" style="--index:0"><img src="/components/silver.webp" alt="" /><b>5</b></i><i class="chip" style="--index:1"><img src="/components/silver.webp" alt="" /><b>5</b></i><i class="chip" style="--index:2"><img src="/components/silver.webp" alt="" /><b>5</b></i><i class="chip" style="--index:3"><img src="/components/silver.webp" alt="" /><b>5</b></i><i class="chip" style="--index:4"><img src="/components/silver.webp" alt="" /><b>5</b></i></span><small>5 left</small></button>
+            <button class="bank-stack cloth"><strong>Cloth</strong><span class="chip-spread"><i class="chip" style="--index:0"><img src="/components/cloth.webp" alt="" /><b>5</b></i><i class="chip" style="--index:1"><img src="/components/cloth.webp" alt="" /><b>3</b></i><i class="chip" style="--index:2"><img src="/components/cloth.webp" alt="" /><b>3</b></i><i class="chip" style="--index:3"><img src="/components/cloth.webp" alt="" /><b>2</b></i><i class="chip" style="--index:4"><img src="/components/cloth.webp" alt="" /><b>2</b></i><i class="chip" style="--index:5"><img src="/components/cloth.webp" alt="" /><b>1</b></i><i class="chip" style="--index:6"><img src="/components/cloth.webp" alt="" /><b>1</b></i></span><small>7 left</small></button>
+            <button class="bank-stack spice"><strong>Spice</strong><span class="chip-spread"><i class="chip" style="--index:0"><img src="/components/spice.webp" alt="" /><b>5</b></i><i class="chip" style="--index:1"><img src="/components/spice.webp" alt="" /><b>3</b></i><i class="chip" style="--index:2"><img src="/components/spice.webp" alt="" /><b>3</b></i><i class="chip" style="--index:3"><img src="/components/spice.webp" alt="" /><b>2</b></i><i class="chip" style="--index:4"><img src="/components/spice.webp" alt="" /><b>2</b></i><i class="chip" style="--index:5"><img src="/components/spice.webp" alt="" /><b>1</b></i><i class="chip" style="--index:6"><img src="/components/spice.webp" alt="" /><b>1</b></i></span><small>7 left</small></button>
+            <button class="bank-stack leather"><strong>Leather</strong><span class="chip-spread"><i class="chip" style="--index:0"><img src="/components/leather.webp" alt="" /><b>4</b></i><i class="chip" style="--index:1"><img src="/components/leather.webp" alt="" /><b>3</b></i><i class="chip" style="--index:2"><img src="/components/leather.webp" alt="" /><b>2</b></i><i class="chip" style="--index:3"><img src="/components/leather.webp" alt="" /><b>1</b></i><i class="chip" style="--index:4"><img src="/components/leather.webp" alt="" /><b>1</b></i><i class="chip" style="--index:5"><img src="/components/leather.webp" alt="" /><b>1</b></i><i class="chip" style="--index:6"><img src="/components/leather.webp" alt="" /><b>1</b></i><i class="chip" style="--index:7"><img src="/components/leather.webp" alt="" /><b>1</b></i><i class="chip" style="--index:8"><img src="/components/leather.webp" alt="" /><b>1</b></i></span><small>9 left</small></button>
+          </div>
+        </aside>
+      </div>
+
+      <section class="action-dock panel">
+        <div class="dock-copy turn-only">
+          <span class="dock-step">1</span>
+          <div><strong>Choose your move</strong><span>Draw from the market, or select cards below to trade or sell.</span></div>
+        </div>
+        <div class="dock-copy exchange-only">
+          <span class="dock-step">✓</span>
+          <div><strong>Trade 2 cards for Spice + Leather</strong><span>Both face-down returns are placed in fixed market slots.</span></div>
+        </div>
+        <div class="dock-actions turn-only"><button>How to play</button></div>
+        <div class="dock-actions exchange-only"><button>Cancel</button><button class="primary">Trade 2 for 2</button></div>
+      </section>
+
+      <section class="player panel">
+        <header class="player-heading"><div><span class="eyebrow">You</span><h2>Asha's hand</h2><p>4 / 7 cards</p></div><p class="exchange-only">Returns 1 and 2 are on the table</p></header>
+        <div class="player-content">
+          <div class="hand">
+            <button class="piece selected"><span class="selection-number">2</span><img src="/components/leather.webp" alt="" /><strong>Leather</strong></button>
+            <button class="piece"><img src="/components/diamond.webp" alt="" /><strong>Diamond</strong></button>
+            <button class="piece"><img src="/components/diamond.webp" alt="" /><strong>Diamond</strong></button>
+            <button class="piece"><img src="/components/gold.webp" alt="" /><strong>Gold</strong></button>
+          </div>
+          <section class="private-group">
+            <header><span>Your herd</span><strong>2 camels</strong></header>
+            <div class="private-herd">
+              <button class="piece camel selected"><span class="selection-number">1</span><img src="/components/camel.webp" alt="" /><strong>Camel</strong></button>
+              <button class="piece camel"><img src="/components/camel.webp" alt="" /><strong>Camel</strong></button>
+            </div>
+          </section>
+          <section class="private-group earned">
+            <header><span>Your tokens</span><strong>3 · 12</strong></header>
+            <div class="earned-chips">
+              <i class="chip leather" style="--index:0"><img src="/components/leather.webp" alt="" /><b>4</b></i>
+              <i class="chip spice" style="--index:1"><img src="/components/spice.webp" alt="" /><b>5</b></i>
+              <i class="chip cloth" style="--index:2"><img src="/components/cloth.webp" alt="" /><b>3</b></i>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <footer class="latest panel">
+        <b>LATEST</b><span><strong>Belen</strong> sold 3 Cloth · earned 4 tokens</span><button>Game log · 12</button><span class="sync">● Synced</span>
+      </footer>
+    </main>
+    <script>
+      const state = new URLSearchParams(location.search).get('state') === 'exchange'
+        ? 'exchange'
+        : 'turn';
+      document.querySelector('[data-ui-fixes-mockup]').dataset.state = state;
+    </script>
+  </body>
+</html>
