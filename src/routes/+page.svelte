@@ -147,8 +147,6 @@
   const opponentTokenCount = () =>
     (lobby.round?.ownedGoodsTokens[opponentUid()]?.length ?? 0) +
     (lobby.round?.ownedBonusTokens[opponentUid()]?.length ?? 0);
-  const camelCountLabel = (count: number) =>
-    `${count} ${count === 1 ? 'camel' : 'camels'}`;
   const buildHash = (import.meta.env.VITE_GIT_HASH ?? 'local').slice(0, 7);
 
   onMount(async () => {
@@ -1221,14 +1219,6 @@
     }
   }
 
-  function ownedTokenValue() {
-    if (!lobby.round) return 0;
-    return [
-      ...(lobby.round.ownedGoodsTokens[uid] ?? []),
-      ...(lobby.round.ownedBonusTokens[uid] ?? [])
-    ].reduce((total, token) => total + token.value, 0);
-  }
-
   function ownedTokens(state: GameState, playerUid: string): Token[] {
     if (!state.round) return [];
     return [
@@ -1532,44 +1522,6 @@
           style={`--zone-art: url("${componentImage('card-back')}")`}
         >
           <h2 id="market-heading">Market</h2>
-          {#if pendingDraw && pendingDraw.activeUid === uid}
-            <div class="draw-confirmation" role="group" aria-label="Confirm draw" data-pending-draw={pendingDraw.kind}>
-              <span>{pendingDraw.kind === 'camels' ? `Take all ${pendingDraw.cardIds.length} camels?` : 'Take this card?'}</span>
-              <button type="button" disabled={busy || status === 'offline'} data-confirm-draw onclick={confirmPendingDraw}>Confirm</button>
-              <button class="secondary" type="button" disabled={busy || status === 'offline'} data-abandon-draw onclick={abandonPendingDraw}>Undo</button>
-            </div>
-          {/if}
-          {#if lobby.round.activeUid === uid && (exchangeMarketIds().length > 0 || activeExchangeTarget || selectedHand.length > 0 || selectedCamelId)}
-            <div class="interaction-tray" aria-live="polite">
-              <p>
-                {#if activeExchangeTarget}
-                  Choose or drag a hand card or camel to the highlighted drop target.
-                {:else if exchangeMarketIds().length > 0}
-                  {exchangeMarketIds().length} market
-                  {exchangeMarketIds().length === 1 ? 'card' : 'cards'} loaded ·
-                  hand {projectedHandSize()} / 7
-                {:else if selectedCamelId && selectedHand.length > 0}
-                  {selectedHand.length} hand {selectedHand.length === 1 ? 'card' : 'cards'} and 1 camel selected ·
-                  choose dashed return targets.
-                {:else if selectedCamelId}
-                  1 camel selected · choose a dashed return target.
-                {:else}
-                  {selectedHand.length} hand {selectedHand.length === 1 ? 'card' : 'cards'} selected ·
-                  choose a matching token stack or a dashed return target.
-                {/if}
-              </p>
-              {#if exchangeMarketIds().length > 0}
-                <button
-                  type="button"
-                  disabled={!isLegalExchange(lobby.round, uid, exchangeMarketIds(), exchangeReturnIds()) || busy || status === 'offline'}
-                  onclick={confirmExchange}
-                >
-                  Trade {exchangeMarketIds().length} for {exchangeReturnIds().length}
-                </button>
-              {/if}
-              <button class="secondary" type="button" onclick={resetInteractions}>Clear</button>
-            </div>
-          {/if}
           <div class="cards market">
             {#each lobby.round.market as card, marketIndex (marketIndex)}
               {@const loadedReturn = exchangeReturnCard(card.id)}
@@ -1646,8 +1598,8 @@
                           (flight) => flight.marketCardId === card.id
                         )}
                       >
-                        <img src={componentImage(loadedReturn.kind)} alt="" draggable="false" />
-                        <span>{cardLabel(loadedReturn.kind)}</span>
+                        <img src={componentImage('card-back')} alt="" draggable="false" />
+                        <span>Return</span>
                       </span>
                     {:else}
                       <span class="drop-target-mark" aria-hidden="true"></span>
@@ -1690,7 +1642,7 @@
             class="camel-herd opponent-herd"
             data-herd-destination={opponentUid()}
             role="img"
-            aria-label={`${opponentPlayer()?.displayName ?? 'Opponent'} has ${camelCountLabel(lobby.round.herds[opponentUid()]?.length ?? 0)} in their herd`}
+            aria-label={`${opponentPlayer()?.displayName ?? 'Opponent'} camel herd`}
           >
             <span>Herd</span>
             <span class="camel-pile" aria-hidden="true">
@@ -1728,6 +1680,55 @@
             <span>{opponentTokenCount()} tokens · values hidden</span>
           </div>
         </div>
+        <section class="action-dock" aria-live="polite">
+          {#if pendingDraw && pendingDraw.activeUid === uid}
+            <div class="draw-confirmation" role="group" aria-label="Confirm draw" data-pending-draw={pendingDraw.kind}>
+              <span>{pendingDraw.kind === 'camels' ? `Draw Camels · ${pendingDraw.cardIds.length} cards staged face down` : 'Draw Single · 1 card staged face down'}</span>
+              <button type="button" disabled={busy || status === 'offline'} data-confirm-draw onclick={confirmPendingDraw}>Confirm</button>
+              <button class="secondary" type="button" disabled={busy || status === 'offline'} data-abandon-draw onclick={abandonPendingDraw}>Undo</button>
+            </div>
+          {:else if lobby.round.activeUid === uid && (exchangeMarketIds().length > 0 || activeExchangeTarget || selectedHand.length > 0 || selectedCamelId)}
+            <div class="interaction-tray">
+              <p>
+                {#if activeExchangeTarget}
+                  Choose or drag a hand card or camel to the highlighted drop target.
+                {:else if exchangeMarketIds().length > 0}
+                  {exchangeMarketIds().length} market
+                  {exchangeMarketIds().length === 1 ? 'card' : 'cards'} loaded ·
+                  hand {projectedHandSize()} / 7
+                {:else if selectedCamelId && selectedHand.length > 0}
+                  {selectedHand.length} hand {selectedHand.length === 1 ? 'card' : 'cards'} and 1 camel selected ·
+                  choose dashed return targets.
+                {:else if selectedCamelId}
+                  1 camel selected · choose a dashed return target.
+                {:else}
+                  {selectedHand.length} hand {selectedHand.length === 1 ? 'card' : 'cards'} selected ·
+                  choose a matching token stack or a dashed return target.
+                {/if}
+              </p>
+              {#if exchangeMarketIds().length > 0}
+                <button
+                  type="button"
+                  disabled={!isLegalExchange(lobby.round, uid, exchangeMarketIds(), exchangeReturnIds()) || busy || status === 'offline'}
+                  onclick={confirmExchange}
+                >
+                  Trade {exchangeMarketIds().length} for {exchangeReturnIds().length}
+                </button>
+              {/if}
+              <button class="secondary" type="button" onclick={resetInteractions}>Clear</button>
+            </div>
+          {:else if lobby.round.activeUid === uid}
+            <div class="turn-guidance">
+              <strong>Choose your move</strong>
+              <span>Draw from the market, or select cards below to trade or sell.</span>
+            </div>
+          {:else}
+            <div class="turn-guidance waiting">
+              <strong>Opponent's turn</strong>
+              <span>Watch the market and the latest action while the other trader acts.</span>
+            </div>
+          {/if}
+        </section>
         <section
           class="hand-zone"
           aria-labelledby="hand-heading"
@@ -1776,7 +1777,6 @@
           <div class="own-herd">
             <span class="own-herd-label">
               <span>Your herd</span>
-              <strong>{camelCountLabel(lobby.round.herds[uid]?.length ?? 0)}</strong>
             </span>
             {#if lobby.round.activeUid === uid}
               <button
@@ -1821,7 +1821,7 @@
                 class="own-camel-stack"
                 data-herd-destination={uid}
                 role="img"
-                aria-label={`You have ${camelCountLabel(lobby.round.herds[uid]?.length ?? 0)} in your herd`}
+                aria-label="Your camel herd"
                 style={`--herd-span: ${ownCamelStackSpan()}`}
               >
                 <span
@@ -1842,6 +1842,26 @@
                 </span>
               </span>
             {/if}
+          </div>
+          <div
+            class="own-token-tray"
+            data-token-destination={uid}
+            role="img"
+            aria-label="Your earned token stack"
+          >
+            <span
+              class="owned-token-pile"
+              aria-hidden="true"
+            >
+              {#if allOwnedTokens(uid).length > 0}
+                <TokenStack
+                  tokens={allOwnedTokens(uid)}
+                  direction="horizontal"
+                  usage="owned"
+                  stepRem={ownedTokenStep(allOwnedTokens(uid).length)}
+                />
+              {/if}
+            </span>
           </div>
         </section>
         <section class="token-area" aria-label="Token supplies">
@@ -1898,33 +1918,6 @@
                 <span class="token-supply-count">{lobby.round.goodsTokens[kind].length} left</span>
               </button>
             {/each}
-          </div>
-          <div
-            class="own-token-tray"
-            data-token-destination={uid}
-          >
-            <span
-              class="owned-token-pile"
-              aria-hidden="true"
-            >
-              {#if allOwnedTokens(uid).length > 0}
-                <TokenStack
-                  tokens={allOwnedTokens(uid)}
-                  direction="horizontal"
-                  usage="owned"
-                  stepRem={ownedTokenStep(allOwnedTokens(uid).length)}
-                />
-              {/if}
-            </span>
-            <span>
-              Your tokens:
-              <strong>
-                {(lobby.round.ownedGoodsTokens[uid]?.length ?? 0) +
-                  (lobby.round.ownedBonusTokens[uid]?.length ?? 0)}
-                worth {ownedTokenValue()}
-              </strong>
-              · Bonus values are private.
-            </span>
           </div>
         </section>
       </section>
@@ -3787,6 +3780,428 @@
     }
     .camel-herd {
       min-height: 34px;
+    }
+  }
+
+  /* Approved ordinary-game composition: public play flows toward the private tray. */
+  .table {
+    --card-size: clamp(5.5rem, min(12vw, 16vh), 7rem);
+    grid-template:
+      'meta seals' 3.1rem
+      'opponent opponent' 5.2rem
+      'market tokens' minmax(0, 1fr)
+      'action action' 3.7rem
+      'hand hand' 13rem /
+      minmax(0, 1fr) minmax(20rem, 22rem);
+    gap: 0.42rem 0.65rem;
+  }
+  .market-zone,
+  .hand-zone {
+    border-color: #9e8a68;
+    background: #fffaf0;
+    box-shadow: 0 0.25rem 0.8rem rgb(10 32 30 / 12%);
+  }
+  .market-zone {
+    background-image:
+      linear-gradient(rgb(255 250 238 / 84%), rgb(255 250 238 / 84%)),
+      var(--zone-art);
+    background-position: center;
+    background-size: auto, min(40vh, 28rem);
+  }
+  .cards.market {
+    flex: 1;
+    align-content: center;
+  }
+  .market-slot {
+    grid-template-rows: var(--card-size) var(--card-size);
+    align-content: center;
+  }
+  .exchange-drop-target {
+    width: var(--card-size);
+    height: var(--card-size);
+    min-height: var(--card-size);
+    flex-direction: column;
+  }
+  .loaded-return-card {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .loaded-return-card img {
+    width: 100%;
+    height: 100%;
+    border-radius: 0.35rem;
+  }
+  .loaded-return-card > span {
+    position: absolute;
+    right: 0.15rem;
+    bottom: 0.15rem;
+    left: 0.15rem;
+    padding: 0.12rem;
+    border-radius: 0 0 0.25rem 0.25rem;
+    background: rgb(10 32 30 / 82%);
+    color: white;
+    text-align: center;
+  }
+  .opponent {
+    min-height: 0;
+    grid-template-columns: minmax(7rem, auto) minmax(0, 1fr) 8rem 10rem;
+    gap: 0.65rem;
+    margin: 0;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid #b7aa8d;
+    border-radius: 0.8rem;
+    box-shadow: 0 0.2rem 0.55rem rgb(10 32 30 / 10%);
+  }
+  .opponent-hand {
+    justify-content: flex-start;
+    min-height: 4.2rem;
+  }
+  .opponent-card-back {
+    width: 3.75rem;
+    height: 3.75rem;
+    flex-basis: 3.75rem;
+    border: 2px solid #315f58;
+    border-radius: 0.45rem;
+  }
+  .opponent-card-back + .opponent-card-back {
+    margin-left: -1.45rem;
+  }
+  .opponent-herd {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .opponent-herd .camel-pile {
+    width: 5rem;
+    transform: none;
+  }
+  .camel-pile img {
+    width: 3.5rem;
+    height: 3.5rem;
+  }
+  .action-dock {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    grid-area: action;
+    align-items: center;
+    padding: 0.35rem 0.65rem;
+    border: 2px solid #d38b21;
+    border-radius: 0.8rem;
+    background: #fff0ce;
+    box-shadow: 0 0.2rem 0.55rem rgb(10 32 30 / 10%);
+  }
+  .action-dock .interaction-tray,
+  .action-dock .draw-confirmation {
+    min-width: 0;
+    min-height: 44px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  .action-dock .interaction-tray p {
+    border: 0;
+    background: transparent;
+  }
+  .turn-guidance {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: baseline;
+    gap: 0.6rem;
+    padding-inline: 0.25rem;
+  }
+  .turn-guidance strong { font-size: 0.92rem; }
+  .turn-guidance span {
+    overflow: hidden;
+    color: #526762;
+    font-size: 0.72rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .turn-guidance.waiting { opacity: 0.78; }
+  .hand-zone {
+    display: grid;
+    grid-template:
+      'hand-heading hand-heading hand-heading' auto
+      'private-hand private-herd private-tokens' minmax(0, 1fr) /
+      minmax(0, 1fr) minmax(10rem, 16rem) minmax(7rem, 10rem);
+    align-items: center;
+    gap: 0.25rem 0.65rem;
+  }
+  .hand-zone > h2 { grid-area: hand-heading; }
+  .cards.hand { grid-area: private-hand; }
+  .own-herd {
+    grid-area: private-herd;
+    align-self: center;
+    margin: 0;
+  }
+  .own-herd-label { min-width: auto; }
+  .own-token-tray {
+    position: static;
+    display: grid;
+    min-width: 0;
+    min-height: var(--card-size);
+    grid-area: private-tokens;
+    place-items: center;
+    margin: 0;
+  }
+  .owned-token-pile {
+    height: 3.1rem;
+    --token-stack-chip-size: 3rem;
+    --token-stack-step: 1rem;
+  }
+  .token-area {
+    grid-template-rows: auto minmax(0, 1fr);
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    border: 1px solid #b7aa8d;
+    background: #eadbbc;
+    box-shadow: 0 0.25rem 0.8rem rgb(10 32 30 / 12%);
+  }
+  .tokens {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: 0.35rem;
+  }
+  .token {
+    border-color: #c3b38f;
+    background: #f4e7ca;
+  }
+  .token:disabled { opacity: 0.78; }
+
+  @media (max-width: 900px) and (min-height: 600px) {
+    .table {
+      --card-size: clamp(3.65rem, 14.8vw, 5.4rem);
+      grid-template:
+        'meta seals' auto
+        'opponent opponent' 4rem
+        'market market' calc(var(--card-size) * 2 + 2.15rem)
+        'tokens tokens' 9.5rem
+        'action action' 4.25rem
+        'hand hand' minmax(0, 1fr) /
+        minmax(0, 1fr) minmax(0, 1fr);
+      gap: 0.3rem;
+    }
+    .market-zone { padding: 0.3rem; }
+    .cards.market { gap: 0.22rem; }
+    .opponent {
+      grid-template-columns: minmax(4.5rem, auto) minmax(0, 1fr) 5.3rem 5.5rem;
+      gap: 0.2rem;
+      padding: 0.2rem 0.4rem;
+    }
+    .opponent-hand { min-height: 3.25rem; }
+    .opponent-card-back {
+      width: 3rem;
+      height: 3rem;
+      flex-basis: 3rem;
+    }
+    .opponent-card-back + .opponent-card-back { margin-left: -1.35rem; }
+    .opponent-herd .camel-pile { width: 3.8rem; }
+    .camel-pile img { width: 2.8rem; height: 2.8rem; }
+    .opponent-private { font-size: 0.62rem; }
+    .opponent-token-pile {
+      height: 2.25rem;
+      --token-stack-chip-size: 2.1rem;
+      --token-stack-step: 0.65rem;
+    }
+    .token-area {
+      --supply-chip-size: 3rem;
+      --supply-chip-step: 0.55rem;
+      padding: 0.18rem 0.28rem;
+    }
+    .token-supply-heading { min-height: 1.6rem; }
+    .tokens { gap: 0.18rem; }
+    .token {
+      min-height: 3.35rem;
+      grid-template-rows: auto minmax(0, 1fr);
+      align-content: center;
+    }
+    .token-supply-count { display: none; }
+    .supply-chip-stack :global(.token-stack.vertical) {
+      width: calc(
+        var(--token-stack-chip-size) +
+        (var(--token-stack-count) - 1) * var(--token-stack-step)
+      );
+      height: var(--token-stack-chip-size);
+    }
+    .supply-chip-stack :global(.token-stack.vertical .stacked-token) {
+      top: 0;
+      left: calc(var(--token-stack-index) * var(--token-stack-step));
+    }
+    .supply-chip-stack :global(.token-stack.vertical .token-chip-rim) {
+      top: 50%;
+      right: -0.02rem;
+      bottom: auto;
+      left: auto;
+      transform: translateY(-50%);
+    }
+    .action-dock { padding: 0.25rem 0.4rem; }
+    .turn-guidance {
+      grid-template-columns: 1fr;
+      gap: 0.08rem;
+    }
+    .turn-guidance strong { font-size: 0.78rem; }
+    .turn-guidance span { font-size: 0.62rem; }
+    .action-dock .interaction-tray p { font-size: 0.62rem; }
+    .action-dock .interaction-tray button,
+    .action-dock .draw-confirmation button {
+      padding: 0.3rem 0.55rem;
+      font-size: 0.68rem;
+    }
+    .hand-zone {
+      grid-template:
+        'hand-heading hand-heading' auto
+        'private-hand private-herd' minmax(0, 1fr)
+        'private-hand private-tokens' 3.2rem /
+        minmax(0, 1fr) 7rem;
+      align-items: center;
+      gap: 0.15rem 0.35rem;
+      padding: 0.25rem;
+    }
+    .cards.hand {
+      grid-template-columns: repeat(4, minmax(0, var(--card-size))) !important;
+      align-content: center;
+      gap: 0.18rem;
+    }
+    .cards.hand > :first-child,
+    .cards.hand > :last-child { justify-self: center; }
+    .own-herd {
+      grid-template-columns: 1fr;
+      gap: 0.1rem;
+    }
+    .own-herd-label { font-size: 0.62rem; }
+    .own-camel-stack,
+    .own-camel-pile { max-width: 7rem; }
+    .own-token-tray { min-height: 3rem; }
+    .owned-token-pile {
+      height: 2.5rem;
+      --token-stack-chip-size: 2.4rem;
+      --token-stack-step: 0.7rem;
+    }
+  }
+
+  @media (max-height: 599px) {
+    .table {
+      --card-size: clamp(3.25rem, 13.5vh, 3.5rem);
+      grid-template:
+        'meta seals' auto
+        'opponent opponent' 2.6rem
+        'market hand' minmax(0, 1fr)
+        'action action' 2.9rem
+        'tokens tokens' 4.25rem /
+        minmax(0, 1.2fr) minmax(0, 0.8fr);
+      gap: 0.2rem 0.4rem;
+    }
+    .seal-track {
+      position: static;
+      width: auto;
+      gap: 0.15rem;
+      padding: 0.1rem 0.35rem;
+      background: #e9dcc1;
+    }
+    .player-seals { font-size: 0.65rem; }
+    .seal-pips img { width: 0.95rem; height: 0.95rem; }
+    .opponent {
+      grid-template-columns: 5rem minmax(0, 1fr) 4rem 8rem;
+      padding-block: 0.1rem;
+    }
+    .opponent-hand { min-height: 2.25rem; }
+    .opponent-card-back {
+      width: 2.1rem;
+      height: 2.1rem;
+      flex-basis: 2.1rem;
+    }
+    .opponent-card-back + .opponent-card-back { margin-left: -0.8rem; }
+    .opponent-herd .camel-pile { width: 3rem; transform: scale(0.68); }
+    .opponent-herd > span:first-child { display: none; }
+    .action-dock { padding: 0.1rem 0.35rem; }
+    .turn-guidance { grid-template-columns: auto 1fr; }
+    .hand-zone {
+      position: relative;
+      display: grid;
+      grid-template:
+        'hand-heading hand-heading' auto
+        'private-hand private-herd' minmax(0, 1fr) /
+        minmax(0, 1fr) var(--card-size);
+      gap: 0.15rem;
+    }
+    .cards.hand {
+      width: 100%;
+      grid-template-columns: repeat(4, minmax(0, var(--card-size))) !important;
+    }
+    .own-herd {
+      position: static;
+      width: var(--card-size);
+      grid-template-columns: 1fr;
+    }
+    .own-token-tray {
+      position: fixed;
+      z-index: 55;
+      bottom: 0.3rem;
+      left: clamp(9rem, 18vw, 10rem);
+      min-height: 2.55rem;
+    }
+    .token-area {
+      --supply-chip-size: 2.4rem;
+      --supply-chip-step: 0.45rem;
+      grid-template: 'token-heading token-stacks' minmax(0, 1fr) / 8.5rem minmax(0, 1fr);
+      align-items: center;
+      gap: 0.2rem;
+      padding: 0.12rem 0.25rem;
+      overflow: hidden;
+    }
+    .token-supply-heading {
+      grid-area: token-heading;
+      align-content: center;
+      align-items: flex-start;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .token-supply-heading h2 { font-size: 0.9rem; }
+    .bonus-supplies {
+      width: 13rem;
+      justify-content: flex-start;
+      transform: scale(0.58);
+      transform-origin: left center;
+    }
+    .tokens {
+      display: grid;
+      min-width: 0;
+      grid-area: token-stacks;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 0.08rem;
+    }
+    .token {
+      --supply-chip-size: 2.4rem;
+      --supply-chip-step: 0.45rem;
+      width: 100%;
+      min-width: 0;
+      min-height: 3.6rem;
+      grid-template-rows: auto minmax(0, 1fr);
+      align-content: center;
+      padding: 0.05rem;
+    }
+    .token-supply-count { display: none; }
+    .supply-chip-stack :global(.token-stack.vertical) {
+      width: calc(
+        var(--token-stack-chip-size) +
+        (var(--token-stack-count) - 1) * var(--token-stack-step)
+      );
+      height: var(--token-stack-chip-size);
+    }
+    .supply-chip-stack :global(.token-stack.vertical .stacked-token) {
+      top: 0;
+      left: calc(var(--token-stack-index) * var(--token-stack-step));
+    }
+    .supply-chip-stack :global(.token-stack.vertical .token-chip-rim) {
+      top: 50%;
+      right: -0.02rem;
+      bottom: auto;
+      left: auto;
+      transform: translateY(-50%);
     }
   }
 </style>

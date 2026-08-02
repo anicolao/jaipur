@@ -60,7 +60,10 @@ export class TestStepHelper {
           rect.top < -1 ||
           rect.bottom > window.innerHeight + 1
         ) {
-          throw new Error(`${element.tagName} is outside the viewport`);
+          throw new Error(
+            `${element.tagName}${element.className ? `.${String(element.className).replaceAll(' ', '.')}` : ''} ` +
+            `is outside the viewport at ${rect.left},${rect.top}–${rect.right},${rect.bottom}`
+          );
         }
       }
 

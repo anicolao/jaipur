@@ -198,7 +198,8 @@ test('the active trader exchanges market goods for herd camels', async ({ browse
         spec: 'The mixed hand-and-herd return fills the market',
         check: async () => {
           await expect(page.locator('.own-herd .own-camel-card')).toHaveCount(1);
-          await expect(page.locator('.own-herd-label strong')).toHaveText('1 camel');
+          await expect(page.locator('.own-herd-label')).toHaveText('Your herd');
+          await expect(page.locator('.own-herd-label')).not.toContainText(/\d+ camels?/);
           await expect(rival.locator('.opponent-herd .camel-pile img')).toHaveCount(1);
           await expect(page.locator('.market .camel')).toHaveCount(4);
           const marketAfter = await page.locator('.market-slot [data-card-id]').evaluateAll(

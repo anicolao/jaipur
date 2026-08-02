@@ -19,4 +19,4 @@ A single browser connection runs private-state-safe Maharaja search and drives t
 
 - [x] Play returns to Asha after the local computer completes one turn
 - [x] The shared append-only game log attributes the reply to Maharaja
-- [x] The opponent remains a normal concealed hand and exact public herd
+- [x] The opponent remains a normal concealed hand and graphical public herd

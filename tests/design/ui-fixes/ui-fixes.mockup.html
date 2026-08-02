@@ -371,6 +371,7 @@
       }
       .game[data-state='exchange'] .selected .selection-number { display: grid; }
       .private-group { display: grid; grid-template-rows: auto 1fr; gap: 0.25rem; }
+      .private-group.earned { grid-template-rows: 1fr; align-items: center; }
       .private-group header { display: flex; align-items: baseline; justify-content: space-between; font-size: 0.72rem; }
       .private-group header strong { font-size: 0.8rem; }
       .private-herd { display: flex; align-items: center; min-height: var(--card-size); padding-left: 0.15rem; }
@@ -503,7 +504,7 @@
           <span>Deck <b>39</b></span>
         </div>
         <div class="match-score">
-          <span class="score-player"><strong>Asha</strong><span>4 cards · 2 camels</span></span>
+          <span class="score-player"><strong>Asha</strong><span>4 cards</span></span>
           <span class="seals" aria-label="Asha has no seals"><i class="seal"></i><i class="seal"></i></span>
         </div>
       </header>
@@ -524,7 +525,7 @@
             <img style="--index:1" src="/components/camel.webp" alt="" />
             <img style="--index:2" src="/components/camel.webp" alt="" />
           </div>
-          <span>Herd<strong>3 camels</strong></span>
+          <span>Herd</span>
         </div>
         <div class="public-group">
           <div class="owned-token-pile">
@@ -602,14 +603,13 @@
             <button class="piece"><img src="/components/gold.webp" alt="" /><strong>Gold</strong></button>
           </div>
           <section class="private-group">
-            <header><span>Your herd</span><strong>2 camels</strong></header>
+            <header><span>Your herd</span></header>
             <div class="private-herd">
               <button class="piece camel selected"><span class="selection-number">1</span><img src="/components/camel.webp" alt="" /><strong>Camel</strong></button>
               <button class="piece camel"><img src="/components/camel.webp" alt="" /><strong>Camel</strong></button>
             </div>
           </section>
-          <section class="private-group earned">
-            <header><span>Your tokens</span><strong>3 · 12</strong></header>
+          <section class="private-group earned" aria-label="Your earned token stack">
             <div class="earned-chips">
               <i class="chip leather" style="--index:0"><img src="/components/leather.webp" alt="" /><b>4</b></i>
               <i class="chip spice" style="--index:1"><img src="/components/spice.webp" alt="" /><b>5</b></i>
