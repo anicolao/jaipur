@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test';
+import { GameLogOracle } from '../helpers/game-log-oracle';
 import { openRound } from '../helpers/open-round';
 import { playRoundToCompletion } from '../helpers/play-round';
 import { TestStepHelper } from '../helpers/test-step-helper';
+import { expectedGameLog } from './expected-game-log';
 
 test('a complete best-of-three match ends at two seals and rematches', async ({ browser, page }, testInfo) => {
   test.setTimeout(300_000);
@@ -10,21 +12,25 @@ test('a complete best-of-three match ends at two seals and rematches', async ({ 
     'Complete best-of-three game',
     'Asha and Belen play production-size rounds until one earns two seals, then begin a clean rematch.'
   );
+  const gameLog = new GameLogOracle(expectedGameLog);
   const { rivalContext, rival } = await openRound(
     browser,
     page,
     `e2e-match-009-${testInfo.project.name}`,
-    'fixed-round-009'
+    'fixed-round-009',
+    gameLog.expectNext
   );
 
   let completedRounds = 0;
   let actionCount = 0;
   while (completedRounds < 3) {
-    actionCount += await playRoundToCompletion(page, rival);
+    actionCount += await playRoundToCompletion(page, rival, 100, gameLog.expectNext);
     completedRounds += 1;
     if (await page.locator('.match-winner').count()) break;
     await page.getByRole('button', { name: `Open round ${completedRounds + 1}` }).click();
+    await gameLog.expectNext(page, rival);
   }
+  gameLog.expectComplete();
   await page.evaluate(() => window.scrollTo(0, 0));
 
   await steps.step('match-won', {

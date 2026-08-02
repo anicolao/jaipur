@@ -1,11 +1,13 @@
 import { expect, type Page } from '@playwright/test';
+import type { ExpectNextGameLogEntry } from './game-log-oracle';
 
 const commonGoods = new Set(['Cloth', 'Spice', 'Leather']);
 
 export async function playRoundToCompletion(
   host: Page,
   rival: Page,
-  limit = 100
+  limit = 100,
+  expectNextGameLogEntry?: ExpectNextGameLogEntry
 ): Promise<number> {
   let active = await Promise.race([
     expect(host.locator('.market .card-action').first())
@@ -45,11 +47,13 @@ export async function playRoundToCompletion(
         await active.locator(`.hand [data-card-id="${card.id}"]`).click();
       }
       await active.locator(`.token.${kind.toLowerCase()}`).click();
+      await expectNextGameLogEntry?.(host, rival);
     } else {
       const camels = active.getByRole('button', { name: /^Take all \d+ camels$/ });
       if (await camels.count()) {
         await camels.first().click();
         await active.locator('[data-confirm-draw]').click();
+        await expectNextGameLogEntry?.(host, rival);
       } else {
         const marketGood = active.locator('.market .card-action:not(.camel)').first();
         if (!(await marketGood.count())) {
@@ -57,6 +61,7 @@ export async function playRoundToCompletion(
         }
         await marketGood.click();
         await active.locator('[data-confirm-draw]').click();
+        await expectNextGameLogEntry?.(host, rival);
       }
     }
     active = active === host ? rival : host;
