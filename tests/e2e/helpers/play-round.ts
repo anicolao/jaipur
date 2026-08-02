@@ -2,6 +2,7 @@ import { expect, type Page } from '@playwright/test';
 import type { ExpectNextGameLogEntry } from './game-log-oracle';
 
 const commonGoods = new Set(['Cloth', 'Spice', 'Leather']);
+const availableTurnControl = '.market .card-action:not(:disabled), .token:not(:disabled)';
 
 export async function playRoundToCompletion(
   host: Page,
@@ -10,10 +11,10 @@ export async function playRoundToCompletion(
   expectNextGameLogEntry?: ExpectNextGameLogEntry
 ): Promise<number> {
   let active = await Promise.race([
-    expect(host.locator('.market .card-action').first())
+    expect(host.locator(availableTurnControl).first())
       .toBeVisible()
       .then(() => host),
-    expect(rival.locator('.market .card-action').first())
+    expect(rival.locator(availableTurnControl).first())
       .toBeVisible()
       .then(() => rival)
   ]);
@@ -49,13 +50,13 @@ export async function playRoundToCompletion(
       await active.locator(`.token.${kind.toLowerCase()}`).click();
       await expectNextGameLogEntry?.(host, rival);
     } else {
-      const camels = active.getByRole('button', { name: /^Take all \d+ camels$/ });
+      const camels = active.locator('.market .card-action.camel:not(:disabled)');
       if (await camels.count()) {
         await camels.first().click();
         await active.locator('[data-confirm-draw]').click();
         await expectNextGameLogEntry?.(host, rival);
       } else {
-        const marketGood = active.locator('.market .card-action:not(.camel)').first();
+        const marketGood = active.locator('.market .card-action:not(.camel):not(:disabled)').first();
         if (!(await marketGood.count())) {
           throw new Error(`No legal ordinary UI action found on action ${action + 1}`);
         }
@@ -66,14 +67,14 @@ export async function playRoundToCompletion(
     }
     active = active === host ? rival : host;
     await expect(
-      active.locator('.market .card-action, .score-review, .action-card-flight').first()
+      active.locator(`${availableTurnControl}, .score-review, .action-card-flight`).first()
     ).toBeVisible();
     await active.locator('.action-card-flight').evaluateAll((flights) => {
       for (const flight of flights) {
         for (const animation of flight.getAnimations()) animation.finish();
       }
     });
-    await expect(active.locator('.market .card-action, .score-review').first()).toBeVisible();
+    await expect(active.locator(`${availableTurnControl}, .score-review`).first()).toBeVisible();
   }
   throw new Error(`Round did not finish within ${limit} ordinary UI actions`);
 }
