@@ -165,9 +165,9 @@ When height is the limiting dimension, reduce decorative padding and secondary c
 
 The tabletop UI keeps its existing layout and phone companion model. The three focused refinements are now implemented:
 
-1. **Duplicate the token market visually.** Each player edge renders an oriented view of the same public token inventory. Only the active player's adjacent view is actionable, and both copies update from the same round state.
-2. **Make market geometry permanent.** The ordinary and tabletop routes share one five-slot renderer. Every tabletop slot permanently reserves card and return-target coordinates, including an inert target position beneath camels.
-3. **Turn market cards toward the active player.** Turn-facing rotation is enabled by default, advances in one consistent direction after the previous action settles, and can be disabled with the `Facing` control. Reduced-motion mode preserves the orientation change without animating it.
+1. **Duplicate the token market visually.** Opposite full-height side rails render oriented views of the same public token inventory. Both copies update from the same round state, and the active player may sell through either one.
+2. **Make market geometry permanent.** The ordinary and tabletop routes share one five-slot renderer. Every tabletop slot permanently reserves card and return-target coordinates, including an inert target position beneath camels. Return targets face the active player without changing position.
+3. **Turn market cards toward the active player.** Turn-facing rotation is enabled by default, advances in one consistent direction after the previous action settles, and can be disabled with the `Facing` control. Reduced-motion mode preserves the orientation change without animating it. Draw prompts move to and face their receiving player's edge, while mirrored count labels flank the physical deck for natural readability from both seats.
 
 The duplicated token views should use the same responsive stack component as ordinary play. On the tabletop's opposing edges, orientation changes but ordering, chip values, and underlying state do not.
 
