@@ -7,7 +7,6 @@
     round,
     goods,
     inverted = false,
-    interactive = false,
     label,
     canSell,
     onSell
@@ -16,7 +15,6 @@
     round: RoundState | null;
     goods: Good[];
     inverted?: boolean;
-    interactive?: boolean;
     label: (kind: Good) => string;
     canSell: (kind: Good) => boolean;
     onSell: (kind: Good) => void | Promise<void>;
@@ -41,7 +39,7 @@
         <button
           type="button"
           class={`rail-token ${kind}`}
-          disabled={!interactive || !canSell(kind)}
+          disabled={!canSell(kind)}
           aria-label={`Sell to ${label(kind)} token stack, ${round.goodsTokens[kind].length} left`}
           data-token-kind={kind}
           onclick={() => onSell(kind)}
@@ -68,6 +66,8 @@
 
 <style>
   .token-market {
+    width: 100%;
+    height: 100%;
     min-width: 0;
     min-height: 0;
     overflow: hidden;

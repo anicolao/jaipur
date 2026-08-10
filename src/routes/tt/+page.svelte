@@ -78,6 +78,7 @@
   let marketRotation = $state(0);
   let marketRotationTimer: ReturnType<typeof setTimeout> | undefined;
   let pendingMarketFacingSeat: Seat | undefined;
+  const saleTokenViewSeats: Partial<Record<string, Seat>> = {};
 
   const componentImage = (kind: Good | 'camel' | 'seal' | 'card-back') =>
     `${base}/components/${kind}.webp`;
@@ -181,8 +182,8 @@
     );
   }
 
-  function tokenViewSelector(uid: string): string {
-    const seat = lobby.players.find((player) => player.uid === uid)?.seat;
+  function tokenViewSelector(uid: string, selectedSeat?: Seat): string {
+    const seat = selectedSeat ?? lobby.players.find((player) => player.uid === uid)?.seat;
     return `[data-token-view-seat="${seat === 1 ? 1 : 2}"]`;
   }
 
@@ -353,9 +354,10 @@
     return isLegalSale(lobby.round, uid, kind, ids);
   }
 
-  async function sell(kind: Good) {
+  async function sell(kind: Good, supplySeat: Seat) {
     const uid = lobby.round?.activeUid;
     if (!uid) return;
+    saleTokenViewSeats[uid] = supplySeat;
     await appendFor(uid, 'cards/sold', { kind, cardIds: saleIds(uid, kind) });
   }
 
@@ -513,7 +515,8 @@
         });
       }
       if (activity.type === 'cards/sold') {
-        const tokenView = tokenViewSelector(uid);
+        const tokenView = tokenViewSelector(uid, saleTokenViewSeats[uid]);
+        delete saleTokenViewSeats[uid];
         activity.cardIds?.forEach((cardId, index) => movements.push({
           cardId,
           source: box(`[data-table-hand-card="${CSS.escape(cardId)}"]`),
@@ -734,9 +737,14 @@
       <span>Tabletop <strong>{gameId || '•••••'}</strong></span>
       {#if lobby.round}
         <span>Round {lobby.round.number}</span>
-        <span class="deck">
+        <span class="deck" aria-label={`Deck, ${lobby.round.deck.length} cards`}>
+          <span class="deck-count deck-count-top" aria-hidden="true">
+            <span>Deck</span><b>{lobby.round.deck.length}</b>
+          </span>
           <img class="deck-card" src={componentImage('card-back')} alt="" />
-          <span>Deck <b>{lobby.round.deck.length}</b></span>
+          <span class="deck-count" aria-hidden="true">
+            <span>Deck</span><b>{lobby.round.deck.length}</b>
+          </span>
         </span>
         <button
           type="button"
@@ -751,7 +759,14 @@
     </header>
     {#if lobby.round?.status === 'active'}
       {#if pendingDraw}
-        <div class="draw-confirmation" role="group" aria-label="Confirm draw" data-pending-draw={pendingDraw.kind}>
+        <div
+          class="draw-confirmation"
+          class:for-top={activeSeat() === 1}
+          role="group"
+          aria-label="Confirm draw"
+          data-pending-draw={pendingDraw.kind}
+          data-prompt-seat={activeSeat()}
+        >
           <span>{pendingDraw.kind === 'camels' ? `Take all ${pendingDraw.cardIds.length} camels?` : 'Take this card?'}</span>
           <button type="button" disabled={busy} data-confirm-draw onclick={confirmPendingDraw}>Confirm</button>
           <button type="button" disabled={busy} data-abandon-draw onclick={abandonPendingDraw}>Undo</button>
@@ -862,25 +877,25 @@
     {/if}
   </div>
 
-  <div class="token-views" aria-label="Mirrored token supplies">
+  <div class="token-view top-token-view">
     <TabletopTokenMarket
       seat={1}
       round={lobby.round}
       {goods}
       inverted
-      interactive={activeSeat() === 1}
       {label}
       {canSell}
-      onSell={sell}
+      onSell={(kind) => sell(kind, 1)}
     />
+  </div>
+  <div class="token-view bottom-token-view">
     <TabletopTokenMarket
       seat={2}
       round={lobby.round}
       {goods}
-      interactive={activeSeat() === 2}
       {label}
       {canSell}
-      onSell={sell}
+      onSell={(kind) => sell(kind, 2)}
     />
   </div>
 
@@ -936,7 +951,7 @@
     position: fixed;
     inset: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) var(--rail-width);
+    grid-template-columns: var(--rail-width) minmax(0, 1fr) var(--rail-width);
     grid-template-rows: var(--edge-size) minmax(0, 1fr) var(--edge-size);
     gap: clamp(0.25rem, 0.7vmin, 0.55rem);
     padding: clamp(0.3rem, 0.8vmin, 0.65rem);
@@ -953,8 +968,8 @@
     background: #fffaf0;
     box-shadow: 0 0.25rem 0.8rem rgb(10 32 30 / 16%);
   }
-  .top-edge { grid-column: 1; grid-row: 1; }
-  .bottom-edge { grid-column: 1; grid-row: 3; }
+  .top-edge { grid-column: 2; grid-row: 1; }
+  .bottom-edge { grid-column: 2; grid-row: 3; }
   .inverted-content { width: 100%; height: 100%; transform: rotate(180deg); }
   .join-seat {
     display: grid;
@@ -1028,21 +1043,21 @@
   .player-seat > footer { display: flex; min-height: 2rem; align-items: center; justify-content: center; gap: 0.45rem; font-size: clamp(0.62rem, 1.2vmin, 0.78rem); text-align: center; }
   .player-seat footer button { min-height: 36px; padding: 0.3rem 0.65rem; border: 0; border-radius: 99rem; background: #a6442d; color: white; font-weight: 700; }
   .shared-market {
-    --table-market-card-size: clamp(4.4rem, 15vh, 8.5rem);
+    --table-market-card-size: clamp(4.2rem, min(15vh, 10.6vw), 8.5rem);
     --table-target-height: clamp(2.7rem, 6.5vh, 4rem);
     --stable-market-gap: clamp(0.35rem, 1.6vw, 1.4rem);
     position: relative;
-    grid-column: 1;
+    grid-column: 2;
     grid-row: 2;
     display: grid;
     min-height: 0;
     grid-template-rows: auto minmax(0, 1fr);
-    padding: clamp(0.4rem, 1vmin, 0.75rem) clamp(4.8rem, 9vw, 8rem);
+    padding: clamp(0.4rem, 1vmin, 0.75rem) clamp(2rem, 4vw, 4rem);
     background-image: linear-gradient(rgb(255 250 238 / 84%), rgb(255 250 238 / 84%)), var(--market-art);
     background-position: center;
     background-size: auto, min(40vh, 28rem);
   }
-  .shared-market > header { display: flex; align-items: center; justify-content: center; gap: clamp(1rem, 5vw, 4rem); font-size: clamp(0.7rem, 1.5vmin, 0.95rem); }
+  .shared-market > header { display: flex; align-items: center; justify-content: center; gap: clamp(0.6rem, 2vw, 1.6rem); font-size: clamp(0.7rem, 1.5vmin, 0.95rem); }
   .shared-market > header strong { letter-spacing: 0.14em; }
   .orientation-toggle {
     min-width: 44px;
@@ -1055,11 +1070,12 @@
     font-weight: 700;
   }
   .orientation-toggle[aria-pressed='true'] { border-color: #a6442d; background: #fff4d6; color: #a6442d; }
-  .deck { display: flex; align-items: center; gap: 0.4rem; }
-  .deck > span { display: grid; text-align: left; }
+  .deck { display: grid; grid-template-columns: auto auto auto; align-items: center; gap: 0.4rem; }
+  .deck-count { display: grid; min-width: 2.5rem; text-align: left; }
+  .deck-count-top { text-align: right; transform: rotate(180deg); }
   .deck-card {
-    width: clamp(4.4rem, 15vh, 8.5rem);
-    height: clamp(4.4rem, 15vh, 8.5rem);
+    width: var(--table-market-card-size);
+    height: var(--table-market-card-size);
     border: 2px solid #315f58;
     border-radius: 0.55rem;
     box-shadow: 0 0.25rem 0.5rem rgb(10 32 30 / 22%);
@@ -1092,7 +1108,7 @@
   .draw-confirmation {
     position: absolute;
     z-index: 12;
-    top: clamp(0.35rem, 1vmin, 0.7rem);
+    bottom: clamp(0.35rem, 1vmin, 0.7rem);
     left: 50%;
     display: flex;
     min-height: 44px;
@@ -1106,6 +1122,11 @@
     font-weight: 700;
     transform: translateX(-50%);
   }
+  .draw-confirmation.for-top {
+    top: clamp(0.35rem, 1vmin, 0.7rem);
+    bottom: auto;
+    transform: translateX(-50%) rotate(180deg);
+  }
   .draw-confirmation button { min-height: 36px; border-radius: 99rem; }
   .draw-pending .table-exchange-target { visibility: hidden; }
   .pending-draw-card :global(.piece-image) { animation: pending-draw-turn 220ms ease-out both; transform-origin: center; }
@@ -1114,7 +1135,7 @@
     to { opacity: 1; transform: rotateY(0); }
   }
   .market-card.camel { border-color: #a6442d; }
-  .table-exchange-target { display: grid; width: var(--table-market-card-size); height: var(--table-target-height); min-height: var(--table-target-height); grid-template-columns: auto 1fr; place-items: center; gap: 0.2rem; padding: 0.2rem; border: 2px dashed #315f58; border-radius: 0.6rem; background: rgb(255 250 240 / 72%); color: #315f58; font-weight: 700; }
+  .table-exchange-target { display: grid; width: var(--table-market-card-size); height: var(--table-target-height); min-height: var(--table-target-height); grid-template-columns: auto 1fr; place-items: center; gap: 0.2rem; padding: 0.2rem; border: 2px dashed #315f58; border-radius: 0.6rem; background: rgb(255 250 240 / 72%); color: #315f58; font-weight: 700; transform: rotate(var(--market-rotation)); transition: transform 420ms ease-in-out; }
   .target-placeholder { visibility: hidden; }
   .table-exchange-target:disabled { opacity: 0.48; }
   .table-exchange-target.loaded { border-style: solid; border-color: #d38b21; background: #fff4d6; opacity: 1; }
@@ -1124,17 +1145,15 @@
   .tabletop-mark { display: grid; place-content: center; place-items: center; gap: 0.25rem; }
   .tabletop-mark img { width: clamp(3rem, 9vh, 5rem); border-radius: 0.55rem; }
   .tabletop-mark strong { font-size: clamp(1.4rem, 4vmin, 2.5rem); letter-spacing: 0.2em; }
-  .token-views {
-    grid-column: 2;
+  .token-view {
     grid-row: 1 / 4;
-    display: grid;
     min-height: 0;
-    grid-template-rows: repeat(2, minmax(0, 1fr));
-    gap: clamp(0.25rem, 0.7vmin, 0.55rem);
   }
+  .top-token-view { grid-column: 1; }
+  .bottom-token-view { grid-column: 3; }
   .top-log, .bottom-log { position: fixed; z-index: 20; }
-  .top-log { top: 0.75rem; left: 0.75rem; transform: rotate(180deg); }
-  .bottom-log { right: 0.75rem; bottom: 0.75rem; }
+  .top-log { top: 0.75rem; left: calc(var(--rail-width) + 1rem); transform: rotate(180deg); }
+  .bottom-log { right: calc(var(--rail-width) + 1rem); bottom: 0.75rem; }
   .corner-log { position: relative; }
   .corner-log summary { display: flex; min-width: 7rem; min-height: 44px; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.35rem 0.55rem; border: 1px solid #8e826b; border-radius: 99rem; background: #fffaf0; box-shadow: 0 0.2rem 0.5rem rgb(10 32 30 / 24%); cursor: pointer; font-size: 0.75rem; font-weight: 700; list-style: none; }
   .corner-log summary::-webkit-details-marker { display: none; }
@@ -1166,10 +1185,10 @@
     *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
   }
   @media (max-aspect-ratio: 1/1) {
-    .tabletop { --rail-width: clamp(6.5rem, 19vw, 8rem); }
+    .tabletop { --rail-width: clamp(9.5rem, 18vw, 10rem); }
     .join-seat, .player-seat { padding-right: 3.4rem; padding-left: 3.4rem; }
     .seat-body { grid-template-columns: minmax(0, 1fr) 5rem; }
     .seat-tokens { display: none; }
-    .shared-market { padding-right: 3.4rem; padding-left: 3.4rem; }
+    .shared-market { padding-right: 1rem; padding-left: 1rem; }
   }
 </style>
