@@ -163,11 +163,11 @@ When height is the limiting dimension, reduce decorative padding and secondary c
 
 ## Tabletop follow-up
 
-The tabletop UI should not be redesigned as part of this work. Its layout and phone companion model are already successful. Three focused refinements are worth implementing separately:
+The tabletop UI keeps its existing layout and phone companion model. The three focused refinements are now implemented:
 
-1. **Duplicate the token market visually.** Render one view of the same public token supply on each player's side, with the far copy rotated for that player. These are synchronized views of one inventory, never independent stacks.
-2. **Make market geometry permanent.** Give all five market cards and all replace targets fixed table coordinates. Exchanges and draws replace slot contents without moving unaffected cards or targets.
-3. **Prototype turn-facing market cards.** On a turn change, the five market cards may rotate 180 degrees to face the active player. This can be a strong turn indicator, but it should be tested behind a visual option because frequent rotation may be distracting. Rotate only after the previous action settles, use the shortest direction consistently, and disable the motion under `prefers-reduced-motion`.
+1. **Duplicate the token market visually.** Each player edge renders an oriented view of the same public token inventory. Only the active player's adjacent view is actionable, and both copies update from the same round state.
+2. **Make market geometry permanent.** The ordinary and tabletop routes share one five-slot renderer. Every tabletop slot permanently reserves card and return-target coordinates, including an inert target position beneath camels.
+3. **Turn market cards toward the active player.** Turn-facing rotation is enabled by default, advances in one consistent direction after the previous action settles, and can be disabled with the `Facing` control. Reduced-motion mode preserves the orientation change without animating it.
 
 The duplicated token views should use the same responsive stack component as ordinary play. On the tabletop's opposing edges, orientation changes but ordering, chip values, and underlying state do not.
 
@@ -209,9 +209,9 @@ Implemented on this PR:
 
 Follow-up work:
 
-1. Extract the stable market layout from the ordinary and tabletop routes into a shared component once both visual treatments settle.
-2. Add the two tabletop token views and permanent slot coordinates, then evaluate the optional turn-facing rotation.
-3. Extend explicit visual coverage to pending-draw confirmation, round summary, and game summary compositions if those surfaces change.
+1. ~~Extract the stable market layout from the ordinary and tabletop routes into a shared component once both visual treatments settle.~~ Implemented with `StableMarketLayout`.
+2. ~~Add the two tabletop token views and permanent slot coordinates, then evaluate the optional turn-facing rotation.~~ Implemented; rotation is default-on with an on-table opt-out.
+3. Pending-draw confirmation now has an explicit tabletop baseline. Extend coverage to round and game summaries if those surfaces change.
 
 ## Acceptance criteria
 

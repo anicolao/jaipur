@@ -13,6 +13,7 @@
   } from '$lib/game-repository';
   import PieceArt from '$lib/PieceArt.svelte';
   import GameSummary from '$lib/GameSummary.svelte';
+  import StableMarketLayout from '$lib/StableMarketLayout.svelte';
   import TokenChip from '$lib/TokenChip.svelte';
   import TokenStack from '$lib/TokenStack.svelte';
   import StrongBotWorker from '$lib/jaipur-bot.worker?worker';
@@ -1523,7 +1524,10 @@
         >
           <h2 id="market-heading">Market</h2>
           <div class="cards market">
-            {#each lobby.round.market as card, marketIndex (marketIndex)}
+            <StableMarketLayout>
+              {#snippet slot(marketIndex)}
+              {@const round = lobby.round!}
+              {@const card = round.market[marketIndex]}
               {@const loadedReturn = exchangeReturnCard(card.id)}
               <div
                 class="market-slot"
@@ -1550,15 +1554,15 @@
                       label={pendingDraw?.kind === 'camels' ? 'Draw Camels' : 'Draw Single'}
                     />
                   </button>
-                {:else if lobby.round.activeUid === uid}
+                {:else if round.activeUid === uid}
                   <button
                     class="card-action"
                     class:camel={card.kind === 'camel'}
                     class:arriving={arrivingCardIds.includes(card.id)}
                     type="button"
-                    disabled={busy || Boolean(pendingDraw) || status === 'offline' || (card.kind !== 'camel' && (lobby.round.hands[uid]?.length ?? 0) >= 7)}
+                    disabled={busy || Boolean(pendingDraw) || status === 'offline' || (card.kind !== 'camel' && (round.hands[uid]?.length ?? 0) >= 7)}
                     aria-label={card.kind === 'camel'
-                      ? `Take all ${lobby.round.market.filter(({ kind }) => kind === 'camel').length} camels`
+                      ? `Take all ${round.market.filter(({ kind }) => kind === 'camel').length} camels`
                       : `Take ${cardLabel(card.kind)} ${card.id}`}
                     data-card-id={card.id}
                     data-card-arriving={arrivingCardIds.includes(card.id) || undefined}
@@ -1576,7 +1580,7 @@
                     <PieceArt kind={card.kind} label={cardLabel(card.kind)} detail={card.id} />
                   </article>
                 {/if}
-                {#if card.kind !== 'camel' && lobby.round.activeUid === uid}
+                {#if card.kind !== 'camel' && round.activeUid === uid}
                   <button
                     class="exchange-drop-target"
                     class:loaded={Boolean(loadedReturn)}
@@ -1608,7 +1612,8 @@
                   </button>
                 {/if}
               </div>
-            {/each}
+              {/snippet}
+            </StableMarketLayout>
           </div>
         </section>
         <div class="opponent">
