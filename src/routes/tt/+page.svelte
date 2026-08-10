@@ -7,8 +7,9 @@
   import QRCode from 'qrcode';
   import PieceArt from '$lib/PieceArt.svelte';
   import GameSummary from '$lib/GameSummary.svelte';
+  import StableMarketLayout from '$lib/StableMarketLayout.svelte';
+  import TabletopTokenMarket from '$lib/TabletopTokenMarket.svelte';
   import TokenChip from '$lib/TokenChip.svelte';
-  import TokenStack from '$lib/TokenStack.svelte';
   import { initializeFirebase } from '$lib/firebase';
   import {
     createGameRepository,
@@ -72,12 +73,18 @@
   }>>([]);
   let busy = $state(false);
   let pendingDraw = $derived<PendingDraw | null>(lobby.pendingDraw);
+  let marketFacingEnabled = $state(true);
+  let marketFacingSeat = $state<Seat>(2);
+  let marketRotation = $state(0);
+  let marketRotationTimer: ReturnType<typeof setTimeout> | undefined;
+  let pendingMarketFacingSeat: Seat | undefined;
 
   const componentImage = (kind: Good | 'camel' | 'seal' | 'card-back') =>
     `${base}/components/${kind}.webp`;
 
   onMount(async () => {
     try {
+      marketFacingEnabled = localStorage.getItem('jaipur:tabletop:turn-facing-market') !== 'off';
       const services = await initializeFirebase();
       hostUid = services.auth.currentUser?.uid ?? '';
       let attempts = 0;
@@ -113,11 +120,16 @@
           const newActivities = repositoryReady
             ? next.activity.filter(({ id }) => !knownActivityIds.has(id))
             : [];
+          const previousActiveSeat = activeSeat(previous);
+          const nextActiveSeat = activeSeat(next);
           lobby = next;
           for (const activity of next.activity) knownActivityIds.add(activity.id);
           repositoryReady = true;
           if (newActivities.length > 0) {
             void animateActivities(newActivities, previous, next);
+          }
+          if (nextActiveSeat && nextActiveSeat !== marketFacingSeat) {
+            scheduleMarketFacing(nextActiveSeat, Boolean(previousActiveSeat && newActivities.length));
           }
           void maybeOpenFirstRound();
         },
@@ -139,6 +151,39 @@
 
   function playerForSeat(seat: Seat): Player | undefined {
     return lobby.players.find((player) => player.seat === seat);
+  }
+
+  function activeSeat(state = lobby): Seat | undefined {
+    const seat = state.players.find((player) => player.uid === state.round?.activeUid)?.seat;
+    return seat === 1 || seat === 2 ? seat : undefined;
+  }
+
+  function scheduleMarketFacing(seat: Seat, afterAction: boolean) {
+    if (marketRotationTimer) clearTimeout(marketRotationTimer);
+    if (afterAction && busy) {
+      pendingMarketFacingSeat = seat;
+      return;
+    }
+    const apply = () => {
+      if (seat === marketFacingSeat) return;
+      marketFacingSeat = seat;
+      marketRotation += 180;
+    };
+    if (afterAction) marketRotationTimer = setTimeout(apply, 1050);
+    else apply();
+  }
+
+  function toggleMarketFacing() {
+    marketFacingEnabled = !marketFacingEnabled;
+    localStorage.setItem(
+      'jaipur:tabletop:turn-facing-market',
+      marketFacingEnabled ? 'on' : 'off'
+    );
+  }
+
+  function tokenViewSelector(uid: string): string {
+    const seat = lobby.players.find((player) => player.uid === uid)?.seat;
+    return `[data-token-view-seat="${seat === 1 ? 1 : 2}"]`;
   }
 
   function playerName(uid: string): string {
@@ -207,6 +252,11 @@
       });
     } finally {
       busy = false;
+      if (pendingMarketFacingSeat) {
+        const nextSeat = pendingMarketFacingSeat;
+        pendingMarketFacingSeat = undefined;
+        scheduleMarketFacing(nextSeat, true);
+      }
     }
   }
 
@@ -463,10 +513,13 @@
         });
       }
       if (activity.type === 'cards/sold') {
+        const tokenView = tokenViewSelector(uid);
         activity.cardIds?.forEach((cardId, index) => movements.push({
           cardId,
           source: box(`[data-table-hand-card="${CSS.escape(cardId)}"]`),
-          destinationSelector: `.token-rail`,
+          destinationSelector: `${tokenView} [data-token-kind="${CSS.escape(
+            (activity.cardKinds?.[index] as Good | undefined) ?? 'leather'
+          )}"]`,
           image: componentImage('card-back'),
           concealDestination: false,
           delay: index * 55
@@ -481,8 +534,8 @@
         ].filter(({ id }) => !oldTokens.has(id));
         awards.forEach((token, index) => tokenMovements.push({
           source: token.kind.startsWith('bonus-')
-            ? box('.bonus-row')
-            : box(`[data-token-kind="${CSS.escape(token.kind)}"] .rail-chip`),
+            ? box(`${tokenView} .bonus-row`)
+            : box(`${tokenView} [data-token-kind="${CSS.escape(token.kind)}"] .rail-chip`),
           destinationSelector: `[data-table-tokens="${CSS.escape(uid)}"]`,
           token,
           delay: 180 + index * 80
@@ -657,7 +710,7 @@
   <meta name="description" content="A shared two-player Jaipur tabletop." />
 </svelte:head>
 
-<main class="tabletop" data-e2e-tabletop>
+<main class="tabletop" data-e2e-tabletop data-e2e-layout>
   <div class="top-edge edge">
     <div class="inverted-content">
       {#if playerForSeat(1)}
@@ -671,7 +724,10 @@
   <section
     class="shared-market"
     class:draw-pending={Boolean(pendingDraw)}
+    class:turn-facing={marketFacingEnabled}
     aria-label="Shared market"
+    data-market-facing-seat={marketFacingSeat}
+    data-turn-facing-enabled={marketFacingEnabled}
     style={`--market-art: url("${componentImage('card-back')}")`}
   >
     <header>
@@ -682,6 +738,13 @@
           <img class="deck-card" src={componentImage('card-back')} alt="" />
           <span>Deck <b>{lobby.round.deck.length}</b></span>
         </span>
+        <button
+          type="button"
+          class="orientation-toggle"
+          aria-pressed={marketFacingEnabled}
+          aria-label="Face market cards toward the active trader"
+          onclick={toggleMarketFacing}
+        >Facing {marketFacingEnabled ? 'on' : 'off'}</button>
       {:else}
         <span>Waiting for both traders</span>
       {/if}
@@ -695,10 +758,17 @@
         </div>
       {/if}
       <div class="market-cards">
-        {#each lobby.round.market as card, marketIndex (marketIndex)}
-          {@const activeUid = lobby.round.activeUid}
+        <StableMarketLayout>
+          {#snippet slot(marketIndex)}
+          {@const round = lobby.round!}
+          {@const card = round.market[marketIndex]}
+          {@const activeUid = round.activeUid}
           {@const loadedReturnId = exchangeLoads(activeUid)[card.id]}
-          <div class="table-market-slot" data-market-slot-index={marketIndex}>
+          <div
+            class="table-market-slot"
+            data-market-slot-index={marketIndex}
+            style={`--market-rotation:${marketRotation}deg`}
+          >
             {#if isPendingDrawCard(card.id)}
               <button
                 type="button"
@@ -720,8 +790,8 @@
               class="market-card"
               class:camel={card.kind === 'camel'}
               class:arriving={arrivingCardIds.includes(card.id)}
-              disabled={busy || Boolean(pendingDraw) || (card.kind !== 'camel' && (lobby.round.hands[activeUid]?.length ?? 0) >= 7)}
-              aria-label={card.kind === 'camel' ? `Take all ${lobby.round.market.filter(({ kind }) => kind === 'camel').length} camels` : `Take ${label(card.kind)} ${card.id}`}
+              disabled={busy || Boolean(pendingDraw) || (card.kind !== 'camel' && (round.hands[activeUid]?.length ?? 0) >= 7)}
+              aria-label={card.kind === 'camel' ? `Take all ${round.market.filter(({ kind }) => kind === 'camel').length} camels` : `Take ${label(card.kind)} ${card.id}`}
               data-market-card-id={card.id}
               data-card-arriving={arrivingCardIds.includes(card.id) || undefined}
               onclick={() => chooseMarket(card)}
@@ -755,9 +825,18 @@
                   <small>Return</small>
                 {/if}
               </button>
+            {:else}
+              <button
+                type="button"
+                class="table-exchange-target target-placeholder"
+                disabled
+                aria-hidden="true"
+                tabindex="-1"
+              ></button>
             {/if}
           </div>
-        {/each}
+          {/snippet}
+        </StableMarketLayout>
       </div>
     {:else if lobby.round?.status === 'complete'}
       <GameSummary
@@ -783,41 +862,27 @@
     {/if}
   </div>
 
-  <aside class="token-rail" aria-label="Token supplies">
-    <h2>Tokens</h2>
-    {#if lobby.round}
-      <div class="bonus-row" aria-label="Bonus supplies">
-        {#each ['3', '4', '5'] as size}
-          <span>{size}+ <strong>{lobby.round.bonusTokens[size as '3' | '4' | '5'].length}</strong></span>
-        {/each}
-      </div>
-      {#each goods as kind}
-        <button
-          type="button"
-          class={`rail-token ${kind}`}
-          disabled={!canSell(kind)}
-          aria-label={`Sell to ${label(kind)} token stack, ${lobby.round.goodsTokens[kind].length} left`}
-          data-token-kind={kind}
-          onclick={() => sell(kind)}
-        >
-          <span class="rail-chip">
-            {#if lobby.round.goodsTokens[kind].length > 0}
-              <TokenStack
-                tokens={lobby.round.goodsTokens[kind]}
-                direction="horizontal"
-                usage="rail"
-              />
-            {:else}
-              <span>—</span>
-            {/if}
-          </span>
-          <span>{label(kind)} <strong>{lobby.round.goodsTokens[kind].length}</strong></span>
-        </button>
-      {/each}
-    {:else}
-      <span class="empty-rail">Supplies appear when play begins.</span>
-    {/if}
-  </aside>
+  <div class="token-views" aria-label="Mirrored token supplies">
+    <TabletopTokenMarket
+      seat={1}
+      round={lobby.round}
+      {goods}
+      inverted
+      interactive={activeSeat() === 1}
+      {label}
+      {canSell}
+      onSell={sell}
+    />
+    <TabletopTokenMarket
+      seat={2}
+      round={lobby.round}
+      {goods}
+      interactive={activeSeat() === 2}
+      {label}
+      {canSell}
+      onSell={sell}
+    />
+  </div>
 
   <div class="top-log">{@render gameLog(true)}</div>
   <div class="bottom-log">{@render gameLog(false)}</div>
@@ -880,7 +945,7 @@
       radial-gradient(circle at center, rgb(255 250 238 / 94%), rgb(233 220 193 / 98%)),
       #e9dcc1;
   }
-  .edge, .shared-market, .token-rail {
+  .edge, .shared-market {
     min-width: 0;
     min-height: 0;
     border: 1px solid #9e8a68;
@@ -900,7 +965,7 @@
     gap: 1rem;
     padding: clamp(0.7rem, 1.8vmin, 1.4rem) clamp(5rem, 11vw, 10rem);
   }
-  .join-seat h2, .player-seat h2, .token-rail h2, .round-result h2 {
+  .join-seat h2, .player-seat h2 {
     margin: 0;
     font-family: 'Cormorant Garamond', serif;
     font-size: clamp(1.2rem, 2.8vmin, 2rem);
@@ -961,8 +1026,11 @@
   .herd-pile img { position: absolute; left: calc(var(--pile-index) * 0.55rem); width: clamp(3.7rem, 9.8vh, 6rem); height: clamp(3.7rem, 9.8vh, 6rem); border: 2px solid #a6442d; border-radius: 0.55rem; object-fit: cover; transform: rotate(calc((var(--pile-index) - 2) * 2deg)); }
   .seat-tokens { display: grid; min-width: 0; min-height: 2.5rem; place-items: center; border: 1px solid #b7aa8d; border-radius: 99rem; background: #f5ead3; font-size: clamp(0.65rem, 1.3vmin, 0.82rem); }
   .player-seat > footer { display: flex; min-height: 2rem; align-items: center; justify-content: center; gap: 0.45rem; font-size: clamp(0.62rem, 1.2vmin, 0.78rem); text-align: center; }
-  .player-seat footer button, .round-result button { min-height: 36px; padding: 0.3rem 0.65rem; border: 0; border-radius: 99rem; background: #a6442d; color: white; font-weight: 700; }
+  .player-seat footer button { min-height: 36px; padding: 0.3rem 0.65rem; border: 0; border-radius: 99rem; background: #a6442d; color: white; font-weight: 700; }
   .shared-market {
+    --table-market-card-size: clamp(4.4rem, 15vh, 8.5rem);
+    --table-target-height: clamp(2.7rem, 6.5vh, 4rem);
+    --stable-market-gap: clamp(0.35rem, 1.6vw, 1.4rem);
     position: relative;
     grid-column: 1;
     grid-row: 2;
@@ -976,6 +1044,17 @@
   }
   .shared-market > header { display: flex; align-items: center; justify-content: center; gap: clamp(1rem, 5vw, 4rem); font-size: clamp(0.7rem, 1.5vmin, 0.95rem); }
   .shared-market > header strong { letter-spacing: 0.14em; }
+  .orientation-toggle {
+    min-width: 44px;
+    min-height: 36px;
+    padding: 0.25rem 0.55rem;
+    border: 1px solid #8e826b;
+    border-radius: 99rem;
+    background: #fffaf0;
+    color: #315f58;
+    font-weight: 700;
+  }
+  .orientation-toggle[aria-pressed='true'] { border-color: #a6442d; background: #fff4d6; color: #a6442d; }
   .deck { display: flex; align-items: center; gap: 0.4rem; }
   .deck > span { display: grid; text-align: left; }
   .deck-card {
@@ -986,9 +1065,30 @@
     box-shadow: 0 0.25rem 0.5rem rgb(10 32 30 / 22%);
     object-fit: cover;
   }
-  .market-cards { display: flex; min-height: 0; align-items: center; justify-content: center; gap: clamp(0.35rem, 1.6vw, 1.4rem); }
-  .table-market-slot { display: grid; min-width: 0; place-items: center; gap: clamp(0.2rem, 0.7vh, 0.4rem); }
-  .market-card { width: clamp(4.4rem, 15vh, 8.5rem); height: clamp(4.4rem, 15vh, 8.5rem); }
+  .market-cards {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    place-items: center;
+    gap: var(--stable-market-gap);
+  }
+  .table-market-slot {
+    display: grid;
+    min-width: 0;
+    grid-template-rows: var(--table-market-card-size) var(--table-target-height);
+    place-items: center;
+    gap: clamp(0.2rem, 0.7vh, 0.4rem);
+  }
+  .market-card {
+    width: var(--table-market-card-size);
+    height: var(--table-market-card-size);
+    transform: rotate(0deg);
+    transition: transform 420ms ease-in-out;
+  }
+  .turn-facing .market-card { transform: rotate(var(--market-rotation)); }
   .draw-confirmation {
     position: absolute;
     z-index: 12;
@@ -1014,7 +1114,8 @@
     to { opacity: 1; transform: rotateY(0); }
   }
   .market-card.camel { border-color: #a6442d; }
-  .table-exchange-target { display: grid; width: clamp(4.4rem, 15vh, 8.5rem); min-height: clamp(2.7rem, 6.5vh, 4rem); grid-template-columns: auto 1fr; place-items: center; gap: 0.2rem; padding: 0.2rem; border: 2px dashed #315f58; border-radius: 0.6rem; background: rgb(255 250 240 / 72%); color: #315f58; font-weight: 700; }
+  .table-exchange-target { display: grid; width: var(--table-market-card-size); height: var(--table-target-height); min-height: var(--table-target-height); grid-template-columns: auto 1fr; place-items: center; gap: 0.2rem; padding: 0.2rem; border: 2px dashed #315f58; border-radius: 0.6rem; background: rgb(255 250 240 / 72%); color: #315f58; font-weight: 700; }
+  .target-placeholder { visibility: hidden; }
   .table-exchange-target:disabled { opacity: 0.48; }
   .table-exchange-target.loaded { border-style: solid; border-color: #d38b21; background: #fff4d6; opacity: 1; }
   .table-exchange-target > span { font-size: 1.2rem; }
@@ -1023,26 +1124,14 @@
   .tabletop-mark { display: grid; place-content: center; place-items: center; gap: 0.25rem; }
   .tabletop-mark img { width: clamp(3rem, 9vh, 5rem); border-radius: 0.55rem; }
   .tabletop-mark strong { font-size: clamp(1.4rem, 4vmin, 2.5rem); letter-spacing: 0.2em; }
-  .token-rail {
+  .token-views {
     grid-column: 2;
     grid-row: 1 / 4;
     display: grid;
     min-height: 0;
-    grid-template-rows: auto auto repeat(6, minmax(0, 1fr));
-    gap: clamp(0.2rem, 0.6vmin, 0.45rem);
-    padding: clamp(0.4rem, 1vmin, 0.75rem) 0.45rem clamp(4.5rem, 10vh, 6rem);
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: clamp(0.25rem, 0.7vmin, 0.55rem);
   }
-  .token-rail h2 { text-align: center; }
-  .bonus-row { display: flex; justify-content: center; gap: 0.25rem; font-size: clamp(0.55rem, 1.1vmin, 0.72rem); }
-  .bonus-row span { padding: 0.18rem 0.3rem; border-radius: 99rem; background: #e9dcc1; }
-  .rail-token { display: grid; min-width: 0; min-height: 44px; grid-template-rows: minmax(0, 1fr) auto; place-items: center; gap: 0.1rem; padding: 0.15rem; overflow: visible; border: 1px solid #b7aa8d; border-radius: 0.6rem; background: #f5ead3; color: #183a37; font-size: clamp(0.56rem, 1.1vmin, 0.76rem); text-align: center; }
-  .rail-token:disabled { opacity: 1; }
-  .rail-chip { display: grid; width: 100%; min-width: 0; place-items: center; }
-  .rail-chip :global(.token-stack) {
-    --token-stack-chip-size: clamp(2.4rem, 4.5vmin, 2.8rem);
-    --token-stack-step: clamp(0.82rem, 1.55vmin, 1rem);
-  }
-  .empty-rail { align-self: center; font-size: 0.8rem; text-align: center; }
   .top-log, .bottom-log { position: fixed; z-index: 20; }
   .top-log { top: 0.75rem; left: 0.75rem; transform: rotate(180deg); }
   .bottom-log { right: 0.75rem; bottom: 0.75rem; }
