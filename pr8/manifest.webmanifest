@@ -1,0 +1,18 @@
+{
+  "name": "Jaipur — Live Card Play",
+  "short_name": "Jaipur",
+  "description": "A realtime two-player implementation of the Jaipur card game.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#f5e7c6",
+  "theme_color": "#183a37",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
