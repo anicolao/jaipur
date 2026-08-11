@@ -22,9 +22,9 @@ A neutral tabletop keeps public play on the shared screen while each QR-joined p
 - [x] The lower player UI and lower-right log remain upright
 - [x] The synchronized token views occupy opposite full-height rails and face their respective players
 - [x] Either token view can complete the active player’s sale
-- [x] Market cards and return targets face the active player after the prior action settles
-- [x] Deck counts flank the physical pile and remain naturally readable from both seats
-- [x] All five card and return-target coordinates remain permanent as slot contents change
+- [x] Market cards face the active player and return areas move to the player-near side
+- [x] The draw pile sits left of the market row with a count readable from each seat
+- [x] All five market cards keep permanent coordinates while return areas switch reserved sides
 - [x] Private phone selections load face-down table targets and keep exact token values private
 - [x] Public actions use direct card flights instead of a text notification overlay
 - [x] The complete tabletop fits without document scrolling

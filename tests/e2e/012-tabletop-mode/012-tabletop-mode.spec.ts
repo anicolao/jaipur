@@ -142,6 +142,10 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   expect(marketCardBox).not.toBeNull();
   expect(Math.abs(deckBox!.width - marketCardBox!.width)).toBeLessThanOrEqual(1);
   expect(Math.abs(deckBox!.height - marketCardBox!.height)).toBeLessThanOrEqual(1);
+  expect(deckBox!.x + deckBox!.width).toBeLessThan(marketCardBox!.x);
+  expect(Math.abs(
+    deckBox!.y + deckBox!.height / 2 - (marketCardBox!.y + marketCardBox!.height / 2)
+  )).toBeLessThanOrEqual(1);
   await expect(page.locator('.deck-count')).toHaveCount(2);
   const deckCountLabels = await page.locator('.deck-count').allTextContents();
   expect(deckCountLabels[0]).toBe(deckCountLabels[1]);
@@ -164,13 +168,15 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
     .first()
     .evaluate((element) => getComputedStyle(element).transform);
   expect(initialTargetTransform).toMatch(/^matrix\(-1, 0, 0, -1,/);
-  const permanentSlotBoxes = await page.locator('.table-market-slot').evaluateAll((slots) =>
+  await expect(page.locator('.table-exchange-target').first()).toHaveAttribute('data-return-seat', '1');
+  const initialSlotBoxes = await page.locator('.table-market-slot').evaluateAll((slots) =>
     slots.map((slot) => {
       const card = slot.querySelector<HTMLElement>('.market-card')!.getBoundingClientRect();
       const target = slot.querySelector<HTMLElement>('.table-exchange-target')!.getBoundingClientRect();
       return { card: { x: card.x, y: card.y }, target: { x: target.x, y: target.y } };
     })
   );
+  for (const { card, target } of initialSlotBoxes) expect(target.y).toBeLessThan(card.y);
   const marketBeforeExchange = await page.locator('.table-market-slot .market-card').evaluateAll(
     (cards) => cards.map((card) => card.getAttribute('data-market-card-id'))
   );
@@ -186,6 +192,7 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
     (element) => getComputedStyle(element).transform
   );
   expect(topPromptTransform).toMatch(/^matrix\(-1, 0, 0, -1,/);
+  expect(topPromptBox!.y + topPromptBox!.height).toBeLessThan(initialSlotBoxes[0].target.y);
   await page.locator('[data-abandon-draw]').click();
   await expect(page.locator('[data-pending-draw]')).toHaveCount(0);
 
@@ -232,6 +239,7 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   expectedMarketAfterExchange[marketBeforeExchange.indexOf(secondTargetMarketId)] = secondReturnId;
   expect(marketAfterExchange).toEqual(expectedMarketAfterExchange);
   await expect(page.locator('.shared-market')).toHaveAttribute('data-market-facing-seat', '2');
+  await expect(page.locator('.table-exchange-target').first()).toHaveAttribute('data-return-seat', '2');
   await expect.poll(() => page
     .locator('.table-exchange-target:not(.target-placeholder)')
     .first()
@@ -247,7 +255,12 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
       return { card: { x: card.x, y: card.y }, target: { x: target.x, y: target.y } };
     })
   );
-  expect(slotBoxesAfterExchange).toEqual(permanentSlotBoxes);
+  expect(slotBoxesAfterExchange.map(({ card }) => card)).toEqual(initialSlotBoxes.map(({ card }) => card));
+  for (const [index, { card, target }] of slotBoxesAfterExchange.entries()) {
+    expect(target.x).toBe(initialSlotBoxes[index].target.x);
+    expect(target.y).toBeGreaterThan(card.y);
+    expect(target.y).not.toBe(initialSlotBoxes[index].target.y);
+  }
 
   const publicTake = page.locator('.market-card:not(.camel):not(:disabled)').first();
   await publicTake.click();
@@ -263,6 +276,9 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   expect(bottomPromptBox).not.toBeNull();
   expect(sharedMarketBox!.y + sharedMarketBox!.height - bottomPromptBox!.y - bottomPromptBox!.height)
     .toBeLessThan(24);
+  const bottomReturnBox = await page.locator('.table-exchange-target').first().boundingBox();
+  expect(bottomReturnBox).not.toBeNull();
+  expect(bottomPromptBox!.y).toBeGreaterThan(bottomReturnBox!.y + bottomReturnBox!.height);
   await expect(bottomPrompt).toHaveCSS('transform', /matrix\(1, 0, 0, 1,/);
   await steps.step('pending-draw', {
     description: 'A pending draw keeps every market and token position stable',
@@ -419,7 +435,7 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
         }
       },
       {
-        spec: 'Market cards and return targets face the active player after the prior action settles',
+        spec: 'Market cards face the active player and return areas move to the player-near side',
         check: async () => {
           await expect(page.locator('.shared-market')).toHaveAttribute('data-turn-facing-enabled', 'true');
           await expect(page.locator('.shared-market')).toHaveAttribute('data-market-facing-seat', '2');
@@ -431,17 +447,27 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
               return [matrix.a, matrix.b, matrix.c, matrix.d].map((value) => Math.round(value));
             })
           ).toEqual([1, 0, 0, 1]);
+          const finalBoxes = await page.locator('.table-market-slot').evaluateAll((slots) =>
+            slots.map((slot) => {
+              const card = slot.querySelector<HTMLElement>('.market-card')!.getBoundingClientRect();
+              const target = slot.querySelector<HTMLElement>('.table-exchange-target')!.getBoundingClientRect();
+              return { card: { x: card.x, y: card.y }, target: { x: target.x, y: target.y } };
+            })
+          );
+          expect(finalBoxes.map(({ card }) => card)).toEqual(initialSlotBoxes.map(({ card }) => card));
+          for (const { card, target } of finalBoxes) expect(target.y).toBeGreaterThan(card.y);
         }
       },
       {
-        spec: 'Deck counts flank the physical pile and remain naturally readable from both seats',
+        spec: 'The draw pile sits left of the market row with a count readable from each seat',
         check: async () => {
           await expect(page.locator('.deck-count')).toHaveCount(2);
           expect(invertedDeckCount).toMatch(/^matrix\(-1, 0, 0, -1,/);
+          expect(deckBox!.x + deckBox!.width).toBeLessThan(marketCardBox!.x);
         }
       },
       {
-        spec: 'All five card and return-target coordinates remain permanent as slot contents change',
+        spec: 'All five market cards keep permanent coordinates while return areas switch reserved sides',
         check: async () => {
           const finalBoxes = await page.locator('.table-market-slot').evaluateAll((slots) =>
             slots.map((slot) => {
@@ -450,7 +476,8 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
               return { card: { x: card.x, y: card.y }, target: { x: target.x, y: target.y } };
             })
           );
-          expect(finalBoxes).toEqual(permanentSlotBoxes);
+          expect(finalBoxes.map(({ card }) => card)).toEqual(initialSlotBoxes.map(({ card }) => card));
+          for (const { card, target } of finalBoxes) expect(target.y).toBeGreaterThan(card.y);
         }
       },
       {
