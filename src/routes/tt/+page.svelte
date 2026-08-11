@@ -737,15 +737,6 @@
       <span>Tabletop <strong>{gameId || '•••••'}</strong></span>
       {#if lobby.round}
         <span>Round {lobby.round.number}</span>
-        <span class="deck" aria-label={`Deck, ${lobby.round.deck.length} cards`}>
-          <span class="deck-count deck-count-top" aria-hidden="true">
-            <span>Deck</span><b>{lobby.round.deck.length}</b>
-          </span>
-          <img class="deck-card" src={componentImage('card-back')} alt="" />
-          <span class="deck-count" aria-hidden="true">
-            <span>Deck</span><b>{lobby.round.deck.length}</b>
-          </span>
-        </span>
         <button
           type="button"
           class="orientation-toggle"
@@ -772,8 +763,18 @@
           <button type="button" disabled={busy} data-abandon-draw onclick={abandonPendingDraw}>Undo</button>
         </div>
       {/if}
-      <div class="market-cards">
-        <StableMarketLayout>
+      <div class="market-stage">
+        <span class="deck" aria-label={`Deck, ${lobby.round.deck.length} cards`}>
+          <span class="deck-count deck-count-top" aria-hidden="true">
+            <span>Deck</span><b>{lobby.round.deck.length}</b>
+          </span>
+          <img class="deck-card" src={componentImage('card-back')} alt="" />
+          <span class="deck-count" aria-hidden="true">
+            <span>Deck</span><b>{lobby.round.deck.length}</b>
+          </span>
+        </span>
+        <div class="market-cards">
+          <StableMarketLayout>
           {#snippet slot(marketIndex)}
           {@const round = lobby.round!}
           {@const card = round.market[marketIndex]}
@@ -822,9 +823,10 @@
                 disabled={busy || Boolean(pendingDraw) || (!loadedReturnId && selectedReturnIds(activeUid).length === 0)}
                 aria-pressed={Boolean(loadedReturnId)}
                 aria-label={loadedReturnId
-                  ? `Return the face-down card below ${label(card.kind)} to the phone selection`
-                  : `Place a selected private card face-down below ${label(card.kind)}`}
+                  ? `Return the face-down card beside ${label(card.kind)} to the phone selection`
+                  : `Place a selected private card face-down beside ${label(card.kind)}`}
                 data-table-exchange-target={card.id}
+                data-return-seat={marketFacingSeat}
                 onclick={() => chooseExchangeTarget(activeUid, card.id)}
               >
                 {#if loadedReturnId}
@@ -847,11 +849,13 @@
                 disabled
                 aria-hidden="true"
                 tabindex="-1"
+                data-return-seat={marketFacingSeat}
               ></button>
             {/if}
           </div>
           {/snippet}
-        </StableMarketLayout>
+          </StableMarketLayout>
+        </div>
       </div>
     {:else if lobby.round?.status === 'complete'}
       <GameSummary
@@ -1043,21 +1047,20 @@
   .player-seat > footer { display: flex; min-height: 2rem; align-items: center; justify-content: center; gap: 0.45rem; font-size: clamp(0.62rem, 1.2vmin, 0.78rem); text-align: center; }
   .player-seat footer button { min-height: 36px; padding: 0.3rem 0.65rem; border: 0; border-radius: 99rem; background: #a6442d; color: white; font-weight: 700; }
   .shared-market {
-    --table-market-card-size: clamp(4.2rem, min(15vh, 10.6vw), 8.5rem);
+    --table-market-card-size: clamp(4rem, min(14vh, 9.2vw), 7.75rem);
     --table-target-height: clamp(2.7rem, 6.5vh, 4rem);
-    --stable-market-gap: clamp(0.35rem, 1.6vw, 1.4rem);
+    --stable-market-gap: clamp(0.25rem, 0.8vw, 0.7rem);
     position: relative;
     grid-column: 2;
     grid-row: 2;
-    display: grid;
     min-height: 0;
-    grid-template-rows: auto minmax(0, 1fr);
-    padding: clamp(0.4rem, 1vmin, 0.75rem) clamp(2rem, 4vw, 4rem);
+    padding: clamp(0.4rem, 1vmin, 0.75rem) clamp(0.65rem, 1.5vw, 1.25rem);
     background-image: linear-gradient(rgb(255 250 238 / 84%), rgb(255 250 238 / 84%)), var(--market-art);
     background-position: center;
     background-size: auto, min(40vh, 28rem);
   }
-  .shared-market > header { display: flex; align-items: center; justify-content: center; gap: clamp(0.6rem, 2vw, 1.6rem); font-size: clamp(0.7rem, 1.5vmin, 0.95rem); }
+  .shared-market > header { position: absolute; z-index: 3; top: clamp(0.35rem, 1vmin, 0.7rem); left: 50%; display: flex; min-height: 36px; align-items: center; justify-content: center; gap: clamp(0.6rem, 2vw, 1.6rem); font-size: clamp(0.7rem, 1.5vmin, 0.95rem); transform: translateX(-50%); }
+  .shared-market[data-market-facing-seat='1'] > header { top: auto; bottom: clamp(0.35rem, 1vmin, 0.7rem); }
   .shared-market > header strong { letter-spacing: 0.14em; }
   .orientation-toggle {
     min-width: 44px;
@@ -1070,9 +1073,9 @@
     font-weight: 700;
   }
   .orientation-toggle[aria-pressed='true'] { border-color: #a6442d; background: #fff4d6; color: #a6442d; }
-  .deck { display: grid; grid-template-columns: auto auto auto; align-items: center; gap: 0.4rem; }
-  .deck-count { display: grid; min-width: 2.5rem; text-align: left; }
-  .deck-count-top { text-align: right; transform: rotate(180deg); }
+  .deck { display: grid; grid-template-rows: 1.8rem var(--table-market-card-size) 1.8rem; place-items: center; gap: 0.25rem; }
+  .deck-count { display: flex; min-width: 3rem; align-items: baseline; justify-content: center; gap: 0.3rem; }
+  .deck-count-top { transform: rotate(180deg); }
   .deck-card {
     width: var(--table-market-card-size);
     height: var(--table-market-card-size);
@@ -1081,12 +1084,21 @@
     box-shadow: 0 0.25rem 0.5rem rgb(10 32 30 / 22%);
     object-fit: cover;
   }
-  .market-cards {
+  .market-stage {
     display: grid;
     width: 100%;
     height: 100%;
     min-width: 0;
     min-height: 0;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: clamp(0.45rem, 1.1vw, 1rem);
+    padding: clamp(3rem, 7vh, 4rem) 0;
+  }
+  .market-cards {
+    display: grid;
+    width: 100%;
+    min-width: 0;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     place-items: center;
     gap: var(--stable-market-gap);
@@ -1094,13 +1106,14 @@
   .table-market-slot {
     display: grid;
     min-width: 0;
-    grid-template-rows: var(--table-market-card-size) var(--table-target-height);
+    grid-template-rows: var(--table-target-height) var(--table-market-card-size) var(--table-target-height);
     place-items: center;
     gap: clamp(0.2rem, 0.7vh, 0.4rem);
   }
   .market-card {
     width: var(--table-market-card-size);
     height: var(--table-market-card-size);
+    grid-row: 2;
     transform: rotate(0deg);
     transition: transform 420ms ease-in-out;
   }
@@ -1135,7 +1148,8 @@
     to { opacity: 1; transform: rotateY(0); }
   }
   .market-card.camel { border-color: #a6442d; }
-  .table-exchange-target { display: grid; width: var(--table-market-card-size); height: var(--table-target-height); min-height: var(--table-target-height); grid-template-columns: auto 1fr; place-items: center; gap: 0.2rem; padding: 0.2rem; border: 2px dashed #315f58; border-radius: 0.6rem; background: rgb(255 250 240 / 72%); color: #315f58; font-weight: 700; transform: rotate(var(--market-rotation)); transition: transform 420ms ease-in-out; }
+  .table-exchange-target { display: grid; width: var(--table-market-card-size); height: var(--table-target-height); min-height: var(--table-target-height); grid-row: 1; grid-template-columns: auto 1fr; place-items: center; gap: 0.2rem; padding: 0.2rem; border: 2px dashed #315f58; border-radius: 0.6rem; background: rgb(255 250 240 / 72%); color: #315f58; font-weight: 700; transform: rotate(var(--market-rotation)); transition: transform 420ms ease-in-out; }
+  .shared-market[data-market-facing-seat='2'] .table-exchange-target { grid-row: 3; }
   .target-placeholder { visibility: hidden; }
   .table-exchange-target:disabled { opacity: 0.48; }
   .table-exchange-target.loaded { border-style: solid; border-color: #d38b21; background: #fff4d6; opacity: 1; }
