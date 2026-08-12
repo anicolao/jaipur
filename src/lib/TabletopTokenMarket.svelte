@@ -89,14 +89,14 @@
   h2 {
     margin: 0;
     font-family: 'Cormorant Garamond', serif;
-    font-size: clamp(1.05rem, 2.2vmin, 1.55rem);
+    font-size: clamp(1.05rem, 2.2vmin, 3rem);
     text-align: center;
   }
   .bonus-row {
     display: flex;
     justify-content: center;
     gap: 0.18rem;
-    font-size: clamp(0.5rem, 0.9vmin, 0.66rem);
+    font-size: clamp(0.5rem, 0.9vmin, 1.2rem);
   }
   .bonus-row span {
     padding: 0.12rem 0.22rem;
@@ -117,7 +117,7 @@
     background: #f5ead3;
     color: #183a37;
     font: inherit;
-    font-size: clamp(0.5rem, 0.9vmin, 0.66rem);
+    font-size: clamp(0.5rem, 0.9vmin, 1.2rem);
     text-align: center;
   }
   .rail-token:disabled { opacity: 1; }
@@ -128,8 +128,8 @@
     place-items: center;
   }
   .rail-chip :global(.token-stack) {
-    --token-stack-chip-size: clamp(1.55rem, 2.6vmin, 1.9rem);
-    --token-stack-step: clamp(0.82rem, 1.5vmin, 0.95rem);
+    --token-stack-chip-size: clamp(1.55rem, 2.6vmin, 4rem);
+    --token-stack-step: clamp(0.82rem, 1.5vmin, 2rem);
   }
   .empty-rail {
     align-self: center;

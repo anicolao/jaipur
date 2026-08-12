@@ -71,14 +71,18 @@
     endSize: number;
     delay: number;
   }>>([]);
-  let busy = $state(false);
+  let requestBusy = $state(false);
+  let actionAnimating = $state(false);
+  let turnPause = $state(false);
+  let turnTransitioning = $state(false);
+  let busy = $derived(requestBusy || actionAnimating || turnPause || turnTransitioning);
   let pendingDraw = $derived<PendingDraw | null>(lobby.pendingDraw);
   let marketFacingEnabled = $state(true);
   let marketFacingSeat = $state<Seat>(2);
   let marketRotation = $state(0);
-  let marketRotationTimer: ReturnType<typeof setTimeout> | undefined;
-  let pendingMarketFacingSeat: Seat | undefined;
+  let pendingTurnSeat: Seat | undefined;
   const saleTokenViewSeats: Partial<Record<string, Seat>> = {};
+  const wait = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
   const componentImage = (kind: Good | 'camel' | 'seal' | 'card-back') =>
     `${base}/components/${kind}.webp`;
@@ -126,11 +130,20 @@
           lobby = next;
           for (const activity of next.activity) knownActivityIds.add(activity.id);
           repositoryReady = true;
-          if (newActivities.length > 0) {
-            void animateActivities(newActivities, previous, next);
-          }
-          if (nextActiveSeat && nextActiveSeat !== marketFacingSeat) {
-            scheduleMarketFacing(nextActiveSeat, Boolean(previousActiveSeat && newActivities.length));
+          const actionAnimation = newActivities.length > 0
+            ? animateActivities(newActivities, previous, next)
+            : Promise.resolve();
+          if (
+            nextActiveSeat &&
+            nextActiveSeat !== marketFacingSeat &&
+            pendingTurnSeat !== nextActiveSeat
+          ) {
+            if (previousActiveSeat && newActivities.length > 0) {
+              pendingTurnSeat = nextActiveSeat;
+              void completeTurnTransition(nextActiveSeat, actionAnimation);
+            } else {
+              applyMarketFacing(nextActiveSeat);
+            }
           }
           void maybeOpenFirstRound();
         },
@@ -159,19 +172,28 @@
     return seat === 1 || seat === 2 ? seat : undefined;
   }
 
-  function scheduleMarketFacing(seat: Seat, afterAction: boolean) {
-    if (marketRotationTimer) clearTimeout(marketRotationTimer);
-    if (afterAction && busy) {
-      pendingMarketFacingSeat = seat;
-      return;
-    }
-    const apply = () => {
+  function applyMarketFacing(seat: Seat) {
+    if (seat === marketFacingSeat) return;
+    marketFacingSeat = seat;
+    marketRotation += 180;
+  }
+
+  async function completeTurnTransition(seat: Seat, actionAnimation: Promise<void>) {
+    try {
+      await actionAnimation;
       if (seat === marketFacingSeat) return;
-      marketFacingSeat = seat;
-      marketRotation += 180;
-    };
-    if (afterAction) marketRotationTimer = setTimeout(apply, 1050);
-    else apply();
+      turnPause = true;
+      await wait(200);
+      turnPause = false;
+      turnTransitioning = true;
+      applyMarketFacing(seat);
+      await wait(matchMedia('(prefers-reduced-motion: reduce)').matches ? 20 : 450);
+      turnTransitioning = false;
+    } finally {
+      turnPause = false;
+      turnTransitioning = false;
+      if (pendingTurnSeat === seat) pendingTurnSeat = undefined;
+    }
   }
 
   function toggleMarketFacing() {
@@ -243,7 +265,7 @@
     payload: Record<string, unknown>
   ) {
     if (!repository || !lobby.round || lobby.round.activeUid !== playerUid || busy) return;
-    busy = true;
+    requestBusy = true;
     try {
       await repository.append(type, {
         ...payload,
@@ -252,12 +274,7 @@
         turnNumber: lobby.round.turnNumber
       });
     } finally {
-      busy = false;
-      if (pendingMarketFacingSeat) {
-        const nextSeat = pendingMarketFacingSeat;
-        pendingMarketFacingSeat = undefined;
-        scheduleMarketFacing(nextSeat, true);
-      }
+      requestBusy = false;
     }
   }
 
@@ -561,6 +578,8 @@
       delay: 120 + index * 70
     }));
 
+    const hasAnimation = movements.length > 0 || tokenMovements.length > 0;
+    if (hasAnimation) actionAnimating = true;
     arrivingCardIds = [...new Set([
       ...arrivingCardIds,
       ...movements.filter(({ concealDestination }) => concealDestination).map(({ cardId }) => cardId)
@@ -596,6 +615,13 @@
       }];
       setTimeout(() => tokenFlights = tokenFlights.filter((flight) => flight.key !== key), 1000 + delay);
     });
+    if (hasAnimation) {
+      try {
+        while (cardFlights.length > 0 || tokenFlights.length > 0) await wait(25);
+      } finally {
+        actionAnimating = false;
+      }
+    }
   }
 </script>
 
@@ -618,9 +644,7 @@
 {/snippet}
 
 {#snippet playerSeat(seat: Seat, player: Player)}
-  {@const isActive = lobby.round?.status === 'active' && lobby.round.activeUid === player.uid}
-  {@const selectedReturns = selectedReturnIds(player.uid)}
-  {@const loads = exchangeLoads(player.uid)}
+  {@const isActive = lobby.round?.status === 'active' && seat === marketFacingSeat}
   <section
     class="player-seat"
     class:active={isActive}
@@ -678,22 +702,6 @@
         <span><strong>{ownedTokens(player.uid).length}</strong> {ownedTokens(player.uid).length === 1 ? 'token' : 'tokens'}</span>
       </div>
     </div>
-    <footer aria-live="polite">
-      {#if isActive && Object.keys(loads).length >= 2}
-        <span>{Object.keys(loads).length} face-down returns placed.</span>
-        <button
-          type="button"
-          disabled={!lobby.round || !isLegalExchange(lobby.round, player.uid, Object.keys(loads), Object.values(loads))}
-          onclick={() => confirmExchange(player.uid)}
-        >Trade {Object.keys(loads).length} for {Object.values(loads).length}</button>
-      {:else if isActive && selectedReturns.length > 0}
-        <span>{selectedReturns.length} selected on the private phone · tap dashed market targets or a token stack.</span>
-      {:else if isActive}
-        <span>Choose private cards on the phone, then use the public market and token targets here.</span>
-      {:else}
-        <span>Watch the market while the other trader acts.</span>
-      {/if}
-    </footer>
   </section>
 {/snippet}
 
@@ -731,6 +739,7 @@
     aria-label="Shared market"
     data-market-facing-seat={marketFacingSeat}
     data-turn-facing-enabled={marketFacingEnabled}
+    data-turn-phase={actionAnimating ? 'action' : turnPause ? 'pause' : turnTransitioning ? 'rotation' : 'ready'}
     style={`--market-art: url("${componentImage('card-back')}")`}
   >
     <header>
@@ -749,20 +758,44 @@
       {/if}
     </header>
     {#if lobby.round?.status === 'active'}
-      {#if pendingDraw}
-        <div
-          class="draw-confirmation"
-          class:for-top={activeSeat() === 1}
-          role="group"
-          aria-label="Confirm draw"
-          data-pending-draw={pendingDraw.kind}
-          data-prompt-seat={activeSeat()}
-        >
+      {@const activeUid = lobby.round.activeUid}
+      {@const promptLoads = exchangeLoads(activeUid)}
+      {@const promptReturns = selectedReturnIds(activeUid)}
+      <div
+        class="market-prompt"
+        class:for-top={marketFacingSeat === 1}
+        class:rotating={turnTransitioning}
+        role="group"
+        aria-label="Tabletop action prompt"
+        aria-live="polite"
+        data-pending-draw={pendingDraw?.kind}
+        data-prompt-seat={marketFacingSeat}
+        data-prompt-phase={actionAnimating ? 'action' : turnPause ? 'pause' : turnTransitioning ? 'rotation' : 'ready'}
+      >
+        {#if actionAnimating}
+          <span>Finishing move…</span>
+        {:else if turnPause}
+          <span>Turn complete</span>
+        {:else if turnTransitioning}
+          <span>Passing turn…</span>
+        {:else if pendingDraw}
           <span>{pendingDraw.kind === 'camels' ? `Take all ${pendingDraw.cardIds.length} camels?` : 'Take this card?'}</span>
           <button type="button" disabled={busy} data-confirm-draw onclick={confirmPendingDraw}>Confirm</button>
           <button type="button" disabled={busy} data-abandon-draw onclick={abandonPendingDraw}>Undo</button>
-        </div>
-      {/if}
+        {:else if Object.keys(promptLoads).length >= 2}
+          <span>{Object.keys(promptLoads).length} face-down returns placed.</span>
+          <button
+            type="button"
+            disabled={!isLegalExchange(lobby.round, activeUid, Object.keys(promptLoads), Object.values(promptLoads))}
+            data-confirm-exchange
+            onclick={() => confirmExchange(activeUid)}
+          >Trade {Object.keys(promptLoads).length} for {Object.values(promptLoads).length}</button>
+        {:else if promptReturns.length > 0}
+          <span>{promptReturns.length} selected on the private phone · tap a return area or token stack.</span>
+        {:else}
+          <span>Choose private cards on the phone, then use the market or token supplies.</span>
+        {/if}
+      </div>
       <div class="market-stage">
         <span class="deck" aria-label={`Deck, ${lobby.round.deck.length} cards`}>
           <span class="deck-count deck-count-top" aria-hidden="true">
@@ -905,7 +938,7 @@
 
   <div class="top-log">{@render gameLog(true)}</div>
   <div class="bottom-log">{@render gameLog(false)}</div>
-  <p class="table-status" data-status={statusKind}>{status} · Build {buildHash}</p>
+  <p class="table-status" class:for-top={marketFacingSeat === 1} data-status={statusKind}>{status} · Build {buildHash}</p>
   {#each cardFlights as flight (flight.key)}
     <span
       class="table-card-flight"
@@ -950,8 +983,8 @@
   button, summary { font: inherit; }
   button:focus-visible, summary:focus-visible { outline: 3px solid #d38b21; outline-offset: 2px; }
   .tabletop {
-    --rail-width: clamp(8.5rem, 14vw, 12rem);
-    --edge-size: minmax(0, 28vh);
+    --rail-width: clamp(8.5rem, 14vw, 24rem);
+    --edge-size: minmax(0, 25vh);
     position: fixed;
     inset: 0;
     display: grid;
@@ -998,7 +1031,7 @@
     display: grid;
     width: 100%;
     height: 100%;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
     gap: 0.25rem;
     padding: clamp(0.35rem, 0.8vmin, 0.65rem) clamp(4.6rem, 9vw, 8rem);
     border: 3px solid transparent;
@@ -1015,12 +1048,12 @@
   .player-seat > header > div { display: flex; align-items: baseline; gap: 0.45rem; }
   .turn-state { padding: 0.2rem 0.55rem; border-radius: 99rem; background: #e9dcc1; }
   .active .turn-state { background: #a6442d; color: white; }
-  .seat-body { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr) clamp(5rem, 10vw, 8rem) clamp(8rem, 14vw, 13rem); align-items: center; gap: 0.5rem; }
+  .seat-body { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr) clamp(5rem, 10vw, 16rem) clamp(8rem, 14vw, 26rem); align-items: center; gap: 0.5rem; }
   .tabletop-hand { display: flex; min-width: 0; height: 100%; align-items: center; }
   .tabletop-hand > img, .market-card {
     position: relative;
-    width: clamp(3.7rem, 9.8vh, 6rem);
-    height: clamp(3.7rem, 9.8vh, 6rem);
+    width: clamp(3.7rem, 9.8vh, 12rem);
+    height: clamp(3.7rem, 9.8vh, 12rem);
     flex: 0 0 auto;
     padding: 0.18rem;
     overflow: hidden;
@@ -1041,15 +1074,14 @@
     padding: 0.15rem;
     border-radius: 0.55rem;
   }
-  .herd-pile { position: relative; width: 6.8rem; height: clamp(3.7rem, 9.8vh, 6rem); }
-  .herd-pile img { position: absolute; left: calc(var(--pile-index) * 0.55rem); width: clamp(3.7rem, 9.8vh, 6rem); height: clamp(3.7rem, 9.8vh, 6rem); border: 2px solid #a6442d; border-radius: 0.55rem; object-fit: cover; transform: rotate(calc((var(--pile-index) - 2) * 2deg)); }
+  .herd-pile { position: relative; width: clamp(6.8rem, 13vw, 22rem); height: clamp(3.7rem, 9.8vh, 12rem); }
+  .herd-pile img { position: absolute; left: calc(var(--pile-index) * clamp(0.55rem, 1.1vmin, 1.4rem)); width: clamp(3.7rem, 9.8vh, 12rem); height: clamp(3.7rem, 9.8vh, 12rem); border: 2px solid #a6442d; border-radius: 0.55rem; object-fit: cover; transform: rotate(calc((var(--pile-index) - 2) * 2deg)); }
   .seat-tokens { display: grid; min-width: 0; min-height: 2.5rem; place-items: center; border: 1px solid #b7aa8d; border-radius: 99rem; background: #f5ead3; font-size: clamp(0.65rem, 1.3vmin, 0.82rem); }
-  .player-seat > footer { display: flex; min-height: 2rem; align-items: center; justify-content: center; gap: 0.45rem; font-size: clamp(0.62rem, 1.2vmin, 0.78rem); text-align: center; }
-  .player-seat footer button { min-height: 36px; padding: 0.3rem 0.65rem; border: 0; border-radius: 99rem; background: #a6442d; color: white; font-weight: 700; }
   .shared-market {
-    --table-market-card-size: clamp(4rem, min(14vh, 9.2vw), 7.75rem);
-    --table-target-height: clamp(2.7rem, 6.5vh, 4rem);
-    --stable-market-gap: clamp(0.25rem, 0.8vw, 0.7rem);
+    --table-market-card-size: clamp(4rem, min(18vh, 10.5vw), 20rem);
+    --table-target-height: clamp(2.7rem, 6.5vh, 7rem);
+    --stable-market-gap: clamp(0.25rem, 0.8vw, 1.5rem);
+    --market-edge-inset: clamp(0.9rem, 1.6vmin, 2.5rem);
     position: relative;
     grid-column: 2;
     grid-row: 2;
@@ -1059,8 +1091,8 @@
     background-position: center;
     background-size: auto, min(40vh, 28rem);
   }
-  .shared-market > header { position: absolute; z-index: 3; top: clamp(0.35rem, 1vmin, 0.7rem); left: 50%; display: flex; min-height: 36px; align-items: center; justify-content: center; gap: clamp(0.6rem, 2vw, 1.6rem); font-size: clamp(0.7rem, 1.5vmin, 0.95rem); transform: translateX(-50%); }
-  .shared-market[data-market-facing-seat='1'] > header { top: auto; bottom: clamp(0.35rem, 1vmin, 0.7rem); }
+  .shared-market > header { position: absolute; z-index: 3; top: var(--market-edge-inset); left: 50%; display: flex; min-height: 36px; align-items: center; justify-content: center; gap: clamp(0.6rem, 2vw, 3rem); font-size: clamp(0.7rem, 1.5vmin, 1.5rem); transform: translateX(-50%); }
+  .shared-market[data-market-facing-seat='1'] > header { top: auto; bottom: var(--market-edge-inset); transform: translateX(-50%) rotate(180deg); }
   .shared-market > header strong { letter-spacing: 0.14em; }
   .orientation-toggle {
     min-width: 44px;
@@ -1073,8 +1105,8 @@
     font-weight: 700;
   }
   .orientation-toggle[aria-pressed='true'] { border-color: #a6442d; background: #fff4d6; color: #a6442d; }
-  .deck { display: grid; grid-template-rows: 1.8rem var(--table-market-card-size) 1.8rem; place-items: center; gap: 0.25rem; }
-  .deck-count { display: flex; min-width: 3rem; align-items: baseline; justify-content: center; gap: 0.3rem; }
+  .deck { display: grid; grid-template-rows: clamp(1.8rem, 3.5vmin, 3.5rem) var(--table-market-card-size) clamp(1.8rem, 3.5vmin, 3.5rem); place-items: center; gap: clamp(0.25rem, 0.6vmin, 0.75rem); }
+  .deck-count { display: flex; min-width: 3rem; align-items: baseline; justify-content: center; gap: 0.3rem; font-size: clamp(0.8rem, 1.4vmin, 1.5rem); }
   .deck-count-top { transform: rotate(180deg); }
   .deck-card {
     width: var(--table-market-card-size);
@@ -1093,7 +1125,7 @@
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
     gap: clamp(0.45rem, 1.1vw, 1rem);
-    padding: clamp(3rem, 7vh, 4rem) 0;
+    padding: clamp(3rem, 7vh, 7rem) 0;
   }
   .market-cards {
     display: grid;
@@ -1118,10 +1150,10 @@
     transition: transform 420ms ease-in-out;
   }
   .turn-facing .market-card { transform: rotate(var(--market-rotation)); }
-  .draw-confirmation {
+  .market-prompt {
     position: absolute;
     z-index: 12;
-    bottom: clamp(0.35rem, 1vmin, 0.7rem);
+    bottom: var(--market-edge-inset);
     left: 50%;
     display: flex;
     min-height: 44px;
@@ -1132,15 +1164,20 @@
     border-radius: 99rem;
     background: #fff4d6;
     box-shadow: 0 0.3rem 0.7rem rgb(10 32 30 / 24%);
+    max-width: min(44rem, 72%);
+    font-size: clamp(0.75rem, 1.35vmin, 1.35rem);
     font-weight: 700;
+    text-align: center;
     transform: translateX(-50%);
+    transition: opacity 100ms ease;
   }
-  .draw-confirmation.for-top {
-    top: clamp(0.35rem, 1vmin, 0.7rem);
+  .market-prompt.for-top {
+    top: var(--market-edge-inset);
     bottom: auto;
     transform: translateX(-50%) rotate(180deg);
   }
-  .draw-confirmation button { min-height: 36px; border-radius: 99rem; }
+  .market-prompt.rotating { opacity: 0; }
+  .market-prompt button { min-height: 36px; padding: 0.3rem 0.65rem; border-radius: 99rem; }
   .draw-pending .table-exchange-target { visibility: hidden; }
   .pending-draw-card :global(.piece-image) { animation: pending-draw-turn 220ms ease-out both; transform-origin: center; }
   @keyframes pending-draw-turn {
@@ -1194,6 +1231,7 @@
     78%, 100% { transform: rotateY(180deg); }
   }
   .table-status { position: fixed; z-index: 15; right: calc(var(--rail-width) + 1rem); bottom: 0.4rem; margin: 0; color: #315f58; font-size: 0.65rem; font-weight: 700; }
+  .table-status.for-top { top: 0.4rem; right: auto; bottom: auto; left: calc(var(--rail-width) + 1rem); transform: rotate(180deg); }
   .table-status[data-status='error'] { color: #a3212a; }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
