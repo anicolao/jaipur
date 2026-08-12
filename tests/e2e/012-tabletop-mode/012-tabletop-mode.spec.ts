@@ -132,8 +132,10 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   await expect(leatherStack.locator('.supply-token')).toHaveCount(9);
   const firstRailRim = await leatherStack.locator('.token-chip-rim').nth(0).boundingBox();
   const secondRailRim = await leatherStack.locator('.token-chip-rim').nth(1).boundingBox();
+  const desktopTokenChipBox = await leatherStack.locator('.stacked-token').first().boundingBox();
   expect(firstRailRim).not.toBeNull();
   expect(secondRailRim).not.toBeNull();
+  expect(desktopTokenChipBox).not.toBeNull();
   expect(Math.abs(secondRailRim!.x - firstRailRim!.x)).toBeGreaterThanOrEqual(firstRailRim!.width - 1);
   expect(Math.abs(secondRailRim!.y - firstRailRim!.y)).toBeLessThanOrEqual(1);
   const deckBox = await page.locator('.deck-card').boundingBox();
@@ -168,6 +170,11 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
     .first()
     .evaluate((element) => getComputedStyle(element).transform);
   expect(initialTargetTransform).toMatch(/^matrix\(-1, 0, 0, -1,/);
+  const initialHeaderTransform = await page.locator('.shared-market > header').evaluate(
+    (element) => getComputedStyle(element).transform
+  );
+  expect(initialHeaderTransform).toMatch(/^matrix\(-1, 0, 0, -1,/);
+  await expect(page.locator('.table-status')).toHaveCSS('transform', /matrix\(-1, 0, 0, -1,/);
   await expect(page.locator('.table-exchange-target').first()).toHaveAttribute('data-return-seat', '1');
   const initialSlotBoxes = await page.locator('.table-market-slot').evaluateAll((slots) =>
     slots.map((slot) => {
@@ -222,15 +229,46 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   await expect(firstPhone.locator('.card-grid button.loaded')).toHaveCount(2);
 
   await expect(page.locator('.table-card-flight, .table-token-flight')).toHaveCount(0, { timeout: 3000 });
+  await page.evaluate(() => {
+    const browserWindow = window as typeof window & {
+      __jaipurTurnBarrier?: { pauseAt?: number; facingAt?: number };
+    };
+    const market = document.querySelector<HTMLElement>('.shared-market')!;
+    browserWindow.__jaipurTurnBarrier = {};
+    const inspect = () => {
+      const barrier = browserWindow.__jaipurTurnBarrier!;
+      if (market.dataset.turnPhase === 'pause' && barrier.pauseAt === undefined) {
+        barrier.pauseAt = performance.now();
+      }
+      if (market.dataset.marketFacingSeat === '2' && barrier.pauseAt !== undefined && barrier.facingAt === undefined) {
+        barrier.facingAt = performance.now();
+        observer.disconnect();
+      }
+    };
+    const observer = new MutationObserver(inspect);
+    observer.observe(market, { attributes: true });
+    inspect();
+  });
   await armFlightCapture(page, '.table-card-flight');
-  await page.locator('[data-seat="1"] footer button').click();
+  await page.locator('[data-confirm-exchange]').click();
   await waitForFlightCapture(page);
-  await expect(page.locator('[data-seat="2"] .turn-state')).toHaveText('Your turn');
+  await expect(page.locator('.shared-market')).toHaveAttribute('data-turn-phase', 'action');
+  await expect(page.locator('.shared-market')).toHaveAttribute('data-market-facing-seat', '1');
+  await expect(page.locator('[data-seat="1"] .turn-state')).toHaveText('Your turn');
   await expect(page.locator('.shared-notice')).toHaveCount(0);
   await page.locator('.bottom-log summary').click();
   await expect(page.locator('.bottom-log li').first()).toContainText(/^Asha traded /);
   await page.locator('.bottom-log summary').click();
   await expect(page.locator('.table-card-flight, .table-token-flight')).toHaveCount(0, { timeout: 3000 });
+  await expect(page.locator('.shared-market')).toHaveAttribute('data-market-facing-seat', '2');
+  const turnBarrierDuration = await page.evaluate(() => {
+    const barrier = (window as typeof window & {
+      __jaipurTurnBarrier?: { pauseAt?: number; facingAt?: number };
+    }).__jaipurTurnBarrier;
+    return (barrier?.facingAt ?? 0) - (barrier?.pauseAt ?? 0);
+  });
+  expect(turnBarrierDuration).toBeGreaterThanOrEqual(190);
+  await expect(page.locator('[data-seat="2"] .turn-state')).toHaveText('Your turn');
   const marketAfterExchange = await page.locator('.table-market-slot .market-card').evaluateAll(
     (cards) => cards.map((card) => card.getAttribute('data-market-card-id'))
   );
@@ -276,6 +314,13 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   expect(bottomPromptBox).not.toBeNull();
   expect(sharedMarketBox!.y + sharedMarketBox!.height - bottomPromptBox!.y - bottomPromptBox!.height)
     .toBeLessThan(24);
+  expect(Math.abs(
+    topPromptBox!.x + topPromptBox!.width / 2 - (bottomPromptBox!.x + bottomPromptBox!.width / 2)
+  )).toBeLessThanOrEqual(1);
+  expect(Math.abs(
+    topPromptBox!.y - sharedMarketBox!.y -
+    (sharedMarketBox!.y + sharedMarketBox!.height - bottomPromptBox!.y - bottomPromptBox!.height)
+  )).toBeLessThanOrEqual(1);
   const bottomReturnBox = await page.locator('.table-exchange-target').first().boundingBox();
   expect(bottomReturnBox).not.toBeNull();
   expect(bottomPromptBox!.y).toBeGreaterThan(bottomReturnBox!.y + bottomReturnBox!.height);
@@ -335,10 +380,13 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   const arrivingTableCard = page.locator('.market-card[data-card-arriving="true"]');
   await expect(arrivingTableCard).toHaveCount(1);
   await expect(arrivingTableCard).toHaveCSS('visibility', 'hidden');
-  await expect(page.locator('[data-seat="1"] .turn-state')).toHaveText('Your turn');
+  await expect(page.locator('.shared-market')).toHaveAttribute('data-turn-phase', 'action');
+  await expect(page.locator('.shared-market')).toHaveAttribute('data-market-facing-seat', '2');
+  await expect(page.locator('[data-seat="2"] .turn-state')).toHaveText('Your turn');
   await expect(page.locator('.table-card-flight, .table-token-flight')).toHaveCount(0, { timeout: 3000 });
   await expect(page.locator('.market-card[data-card-arriving="true"]')).toHaveCount(0);
   await expect(page.locator('.shared-market')).toHaveAttribute('data-market-facing-seat', '1');
+  await expect(page.locator('[data-seat="1"] .turn-state')).toHaveText('Your turn');
   await expect.poll(() => page
     .locator('.table-exchange-target:not(.target-placeholder)')
     .first()
@@ -363,6 +411,8 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
   await waitForFlightCapture(page);
   const saleTokenFlight = page.locator('.table-token-flight').first();
   await expect(saleTokenFlight).toBeVisible();
+  await expect(page.locator('.shared-market')).toHaveAttribute('data-turn-phase', 'action');
+  await expect(page.locator('[data-seat="1"] .turn-state')).toHaveText('Your turn');
   const tokenFlightStart = await saleTokenFlight.evaluate((flight) =>
     parseFloat(getComputedStyle(flight).getPropertyValue('--start-left'))
   );
@@ -383,9 +433,28 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
     viewportWidth: innerWidth,
     viewportHeight: innerHeight
   }))).toEqual({ width: 393, height: 852, viewportWidth: 393, viewportHeight: 852 });
-  await expect(page.locator('[data-seat="2"] .turn-state')).toHaveText('Your turn');
   await expect(page.locator('.table-card-flight, .table-token-flight')).toHaveCount(0, { timeout: 3000 });
   await expect(page.locator('.shared-market')).toHaveAttribute('data-market-facing-seat', '2');
+  await expect(page.locator('[data-seat="2"] .turn-state')).toHaveText('Your turn');
+
+  const desktopCardSize = marketCardBox!.width;
+  const desktopTokenSize = desktopTokenChipBox!.width;
+  await page.setViewportSize({ width: 3840, height: 2160 });
+  const fourKCardBox = await page.locator('.market-card').first().boundingBox();
+  const fourKTokenBox = await leatherStack.locator('.stacked-token').first().boundingBox();
+  expect(fourKCardBox).not.toBeNull();
+  expect(fourKTokenBox).not.toBeNull();
+  expect(fourKCardBox!.width).toBeGreaterThan(desktopCardSize * 2);
+  expect(fourKTokenBox!.width).toBeGreaterThan(desktopTokenSize * 1.8);
+  await expect.poll(() => page.evaluate(() => ({
+    width: document.documentElement.scrollWidth,
+    height: document.documentElement.scrollHeight,
+    viewportWidth: innerWidth,
+    viewportHeight: innerHeight
+  }))).toEqual({ width: 3840, height: 2160, viewportWidth: 3840, viewportHeight: 2160 });
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await expect.poll(async () => (await page.locator('.market-card').first().boundingBox())?.width)
+    .toBeCloseTo(desktopCardSize, 0);
 
   const facingToggle = page.getByRole('button', { name: 'Face market cards toward the active trader' });
   await expect(facingToggle).toHaveAttribute('aria-pressed', 'true');
@@ -435,10 +504,29 @@ test('a fresh tabletop seats two QR-joined players around one touch market', asy
         }
       },
       {
+        spec: 'Cards and supply tokens scale up substantially when a 4K tabletop is available',
+        check: async () => {
+          expect(fourKCardBox!.width).toBeGreaterThan(desktopCardSize * 2);
+          expect(fourKTokenBox!.width).toBeGreaterThan(desktopTokenSize * 1.8);
+        }
+      },
+      {
+        spec: 'Action animation settles before the 200 ms turn handoff and market rotation',
+        check: async () => {
+          expect(turnBarrierDuration).toBeGreaterThanOrEqual(190);
+          await expect(page.locator('.shared-market')).toHaveAttribute('data-turn-phase', 'ready');
+        }
+      },
+      {
         spec: 'Market cards face the active player and return areas move to the player-near side',
         check: async () => {
           await expect(page.locator('.shared-market')).toHaveAttribute('data-turn-facing-enabled', 'true');
           await expect(page.locator('.shared-market')).toHaveAttribute('data-market-facing-seat', '2');
+          const currentHeaderTransform = await page.locator('.shared-market > header').evaluate(
+            (element) => getComputedStyle(element).transform
+          );
+          expect(currentHeaderTransform).toMatch(/^matrix\(1, 0, 0, 1,/);
+          await expect(page.locator('.table-status')).toHaveCSS('transform', 'none');
           await expect.poll(() => page
             .locator('.table-exchange-target:not(.target-placeholder)')
             .first()

@@ -167,7 +167,9 @@ The tabletop UI keeps its existing layout and phone companion model. The three f
 
 1. **Duplicate the token market visually.** Opposite full-height side rails render oriented views of the same public token inventory. Both copies update from the same round state, and the active player may sell through either one.
 2. **Make market geometry legible.** The ordinary and tabletop routes share one five-slot renderer. Every tabletop card keeps a permanent center coordinate, while its return area moves between reserved positions above and below the card so it is physically nearest the active player. The draw pile sits beside the five-card row instead of above it.
-3. **Turn market cards toward the active player.** Turn-facing rotation is enabled by default, advances in one consistent direction after the previous action settles, and can be disabled with the `Facing` control. Reduced-motion mode preserves the orientation change without animating it. Draw prompts sit inside the table at the closest edge to their receiving player, while mirrored count labels occupy the player-near sides of the physical deck.
+3. **Turn the whole interaction toward the active player.** Turn-facing rotation is enabled by default and can be disabled with the `Facing` control. Every active instruction now occupies one inset market prompt, and persistent market/status labels face the current player. Action flights finish completely in the acting player's orientation, pause for 200 ms, and only then begin the turn rotation. Reduced-motion mode preserves the two-phase state change without prolonged motion.
+
+Large tabletop displays continue scaling beyond the original desktop caps. At 4K, the side rails, market cards, private card backs, herds, token chips, labels, gaps, and target areas all use the available physical space while preserving the fixed market row and player-near controls.
 
 The duplicated token views should use the same responsive stack component as ordinary play. On the tabletop's opposing edges, orientation changes but ordering, chip values, and underlying state do not.
 
