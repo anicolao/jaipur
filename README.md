@@ -22,13 +22,13 @@ commit contract, and vertical-slice sequence.
 
 ## Play
 
-Open [the live game](https://jaipur.boardgamescafe.org/), enter your trader
+Open [the live game](https://anicolao.github.io/jaipur/), enter your trader
 name, and create the room. The game automatically reserves an uppercase
 five-letter code and places it in the invite URL. Share that URL with your
 rival; they enter their name and join. Both players then mark themselves ready
 and the host opens the first round.
 
-For a shared touch table, open [tabletop mode](https://jaipur.boardgamescafe.org/tt/).
+For a shared touch table, open [tabletop mode](https://anicolao.github.io/jaipur/tt/).
 Each load reserves a fresh game and displays one seat-specific QR code at each
 end of the table. Both players scan the code nearest them and choose a name on
 their phones; each phone becomes a private hand controller while play opens

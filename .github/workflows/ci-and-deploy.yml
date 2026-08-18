@@ -71,10 +71,10 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "base=/pr${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            echo "base=/jaipur/pr${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
             echo "destination=pr${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
           else
-            echo "base=" >> "$GITHUB_OUTPUT"
+            echo "base=/jaipur" >> "$GITHUB_OUTPUT"
             echo "destination=" >> "$GITHUB_OUTPUT"
           fi
       - name: Build static client
